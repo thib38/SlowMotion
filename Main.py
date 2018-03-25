@@ -1,7 +1,6 @@
 '''	==================================================================================================
 
     ==================================================================================================  '''
-import exiftool
 import logging
 import os
 import statistics
@@ -726,7 +725,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         # list that will store threads launched to perform picture loading in background
         self.thread_list = []
         # state whether all preview are loaded or not
-        self.image_preview_load_completed = None
+        self.image_preview_load_completed = True  # initialized at True so that it passes completion test 1st timme
 
         # long live attribute to hold progressbar instance
         self.progress_bar = None
