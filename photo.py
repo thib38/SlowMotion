@@ -21,8 +21,8 @@ import cv2
 import numpy as np
 # import libraw
 import rawpy
-from rawkit.raw import LibRaw
-from rawkit.raw import Raw
+# from rawkit.raw import LibRaw
+# from rawkit.raw import Raw
 
 from PyQt5.QtCore import QByteArray, QIODevice, QDataStream
 from PyQt5.QtGui import QImage, QPixmap
