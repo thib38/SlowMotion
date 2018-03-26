@@ -122,8 +122,8 @@ class Photo(StoreQPixmap):
     }
 
     _EXIF_KEYWORD_REFERENCING_OFFSET_AND_LENGTH_OF_PREVIEW_PER_MIME_FILE_TYPE_DICT = {
-        "image/x-nikon-nef": ["EXIF:JpgFromRawStart", "EXIF:JpgFromRawLength"],  # heavy one - resize takes too long
-        # "image/x-nikon-nef": ["EXIF:OtherImageStart", "EXIF:OtherImageLength"],  # lighter - preferred
+        # "image/x-nikon-nef": ["EXIF:JpgFromRawStart", "EXIF:JpgFromRawLength"],  # heavy one - resize takes too long
+        "image/x-nikon-nef": ["EXIF:OtherImageStart", "EXIF:OtherImageLength"],  # lighter - preferred
         "image/jpeg": ["EXIF:ThumbnailOffset", "EXIF:ThumbnailLength"]
     }
 
@@ -1128,11 +1128,12 @@ class PhotoCollection:
         if rc == 0:
             if load_completed_signal_emit_function_reference:
                 load_completed_signal_emit_function_reference()
-                logger.info(" IMAGE PREVIEW BACKGROUND LOADING COMPLETED")
+            logger.info(" IMAGE PREVIEW BACKGROUND LOADING COMPLETED")
 
         return None
 
     def launch_background_picture_loader_threads(self, load_completed_signal_emit_function_reference=False):
+        logger.info(" IMAGE PREVIEW BACKGROUND LOADING STARTED")
         thread_list = []
         for index_ in range(__class__._nb_of_background_picture_loading_threads):
             t = threading.Thread(target=self._load_active_photos_preview_pictures_in_memory,
