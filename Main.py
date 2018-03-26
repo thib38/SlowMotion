@@ -137,22 +137,19 @@ class ImageAndPlotDisplayWithMatplotlib(FigureCanvas):
         # store image currently displayed
         self._img_currently_displayed = None
         # Display option default value
-        self._image_is_to_be_shown = True
+        self._image_is_to_be_shown = None
         self._graph_is_to_be_shown = True
         # set font size for matplotlib envt
         mpl.rcParams.update({'font.size': 8})
 
-    def toggle_image_to_be_shown(self):
+    def set_image_to_be_shown(self):
+        self._image_is_to_be_shown = True
+        self.show_img(self._img_currently_displayed)
 
-        self._image_is_to_be_shown = not self._image_is_to_be_shown
-        if self._image_is_to_be_shown:
-            self.show_img(self._img_currently_displayed)
-        else:
-            self.ax_image.cla()
-            self.fig.canvas.draw_idle()
-
-    def image_is_to_be_shown(self):
-        return self._image_is_to_be_shown
+    def clear_image_to_be_shown(self):
+        self._image_is_to_be_shown = False
+        self.ax_image.cla()
+        self.fig.canvas.draw_idle()
 
     def compute_and_display_figure(self, photo_container):
         stat_dict = photo_container.compute_statistics_interval_with_previous()
@@ -172,8 +169,8 @@ class ImageAndPlotDisplayWithMatplotlib(FigureCanvas):
         :param img: Numpy RGB image matplotlib comptaible
         :return: None
         """
+        self._img_currently_displayed = img
         if self._image_is_to_be_shown:
-            self._img_currently_displayed = img
             image = img
         else:
             image = np.zeros([1920, 1080, 3], dtype=np.uint8)
@@ -759,7 +756,9 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.showvideoButton.clicked.connect(self.handle_show_video_button)
         self.PicklePushButton.clicked.connect(self.handle_pickle_button)
         self.UnpicklePushButton.clicked.connect(self.handle_unpickle_button)
-        self.ShowImageRadioButton.toggled.connect(self.my_graph.toggle_image_to_be_shown)
+        self.ShowImageRadioButton.setChecked(False)
+        # self.ShowImageRadioButton.toggled.connect(self.my_graph.toggle_image_to_be_shown)
+        self.ShowImageRadioButton.toggled.connect(self.toggle_image_to_be_shown)
 
         # connect Menu action to their respective handle
         self.actionExit.triggered.connect(self.handle_exit_menu)
@@ -815,6 +814,13 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         #  update graph
         self.my_graph.compute_and_display_figure(self.active_photos)
 
+    def toggle_image_to_be_shown(self):
+
+        if self.ShowImageRadioButton.isChecked():
+            self.my_graph.set_image_to_be_shown()
+        else:
+            self.my_graph.clear_image_to_be_shown()
+
     def handle_load_files_from_directory(self, signal):
 
         file_path = self.treeView.model().filePath(signal)
@@ -835,6 +841,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         progress_bar_ticker = StatusProgressBarTicker(2 * len(file_list))  # two stages per file
         QtWidgets.QApplication.processEvents()
         logger.info(" START PHOTO META DATA EXTRACTION OF TYPE %s FROM %s", VALID_SUFFIX, str(file_path))
+        self.ShowImageRadioButton.setChecked(False)
         if self.active_photos.load_metadata_from_list_of_files(file_list, VALID_SUFFIX, progress_bar_ticker.tick) > 0:
             # load compute and display_upon_sliderReleased_signal Photo details, Summary and Graph of Intervals
             self.myTable = ShowTableView(self, self.active_photos)
@@ -863,7 +870,6 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
             )
             QMessageBox.about(self, PROGRAM_NAME, "No elligible file found in {}\nprevious folder remain loaded" \
                               .format(str(file_path)))
-
         self.toggle_progress_bar()  # close progress bar
         logger.info(" %s PHOTOS LOADED in Photo Class ", str(len(self.active_photos)))
 
@@ -872,6 +878,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
     def upon_background_picture_load_completed(self):
         self.image_preview_load_completed = True
         self.my_slider.slider_connect_valueChanged_signal_slot()
+        self.ShowImageRadioButton.setChecked(True)  # check radio button and activate display of image
 
     def handle_remove_button(self):
 
