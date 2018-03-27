@@ -829,7 +829,8 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         if not self.image_preview_load_completed:
             self.active_photos.set_stop_background_preview_load_event()
 
-        # wipe Photo containers after taking copy of them in case no file is loaded
+        # wipe Photo containers after taking copy of them and their path in case no file is loaded
+        keep_working_directory = os.getcwd()
         self._save_context()
         self.active_photos.reset()
         self.discarded_photos.reset()
@@ -848,6 +849,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
             self.statusbar_message_qlabel.setText("files from :" + str(file_path))
             msgbox_txt = "Photos successfully loaded"
         else:  # no picture found restore previous folder
+            os.chdir(keep_working_directory)
             self._restore_context()
             msgbox_txt = "No elligible file found in {}\nprevious folder remain loaded".format(str(file_path))
 
