@@ -840,36 +840,32 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.toggle_progress_bar()  # display_upon_sliderReleased_signal progress bar
         progress_bar_ticker = StatusProgressBarTicker(2 * len(file_list))  # two stages per file
         QtWidgets.QApplication.processEvents()
+
         logger.info(" START PHOTO META DATA EXTRACTION OF TYPE %s FROM %s", VALID_SUFFIX, str(file_path))
         self.ShowImageRadioButton.setChecked(False)
+
         if self.active_photos.load_metadata_from_list_of_files(file_list, VALID_SUFFIX, progress_bar_ticker.tick) > 0:
-            # load compute and display_upon_sliderReleased_signal Photo details, Summary and Graph of Intervals
-            self.myTable = ShowTableView(self, self.active_photos)
-            self.my_list = ShowSummary(self.listView, self.active_photos)
-            self.my_graph.compute_and_display_figure(self.active_photos)
-            self.my_slider.display_by_row(0)
-            self.my_slider.set_cursor(0)
             self.statusbar_message_qlabel.setText("files from :" + str(file_path))
-            QMessageBox.about(self, PROGRAM_NAME, "Photos successfully loaded")
-            # start background threads that will load pictures in memory in background
-            self.image_preview_load_completed = False
-            self.thread_list = self.active_photos.launch_background_picture_loader_threads(
-                self.BackgroundPictureLoadCompleted.emit
-            )
+            msgbox_txt = "Photos successfully loaded"
         else:  # no picture found restore previous folder
             self._restore_context()
-            self.myTable = ShowTableView(self, self.active_photos)
-            self.my_list = ShowSummary(self.listView, self.active_photos)
-            self.my_graph.compute_and_display_figure(self.active_photos)
-            self.my_slider.display_by_row(0)
-            self.my_slider.set_cursor(0)
-            # restart background load of pictures in case it was not completed
-            self.image_preview_load_completed = False
-            self.thread_list = self.active_photos.launch_background_picture_loader_threads(
-                self.BackgroundPictureLoadCompleted.emit
-            )
-            QMessageBox.about(self, PROGRAM_NAME, "No elligible file found in {}\nprevious folder remain loaded" \
-                              .format(str(file_path)))
+            msgbox_txt = "No elligible file found in {}\nprevious folder remain loaded".format(str(file_path))
+
+        # load compute and display_upon_sliderReleased_signal Photo details, Summary and Graph of Intervals
+        self.myTable = ShowTableView(self, self.active_photos)
+        self.my_list = ShowSummary(self.listView, self.active_photos)
+        self.my_graph.compute_and_display_figure(self.active_photos)
+        self.my_slider.display_by_row(0)
+        self.my_slider.set_cursor(0)
+
+        # start or restart background threads that will load pictures in memory in background
+        self.image_preview_load_completed = False
+        self.thread_list = self.active_photos.launch_background_picture_loader_threads(
+            self.BackgroundPictureLoadCompleted.emit
+        )
+
+        # inform about status of load
+        QMessageBox.about(self, PROGRAM_NAME, msgbox_txt)
         self.toggle_progress_bar()  # close progress bar
         logger.info(" %s PHOTOS LOADED in Photo Class ", str(len(self.active_photos)))
 

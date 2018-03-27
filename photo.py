@@ -1057,6 +1057,7 @@ class PhotoCollection:
     def clear_stop_background_preview_load_event(self):
         self._stop_background_preview_load_event.clear()
 
+
     def load_image_previews_in_memory(self, index_):
         """
         this functions checks if preview image is already stored in the Photo class instance of the picture.
