@@ -1528,7 +1528,7 @@ if __name__ == "__main__":
     logger.addHandler(handler_file)
     logger.addHandler(handler_console)
 
-    VERSION = "V0.9"
+    VERSION = "V0.9.1"
     PROGRAM_NAME = "PHOTO INTERVAL MANAGER"
 
     TAG_DICTIONNARY = OrderedDict({
