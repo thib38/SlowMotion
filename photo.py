@@ -116,6 +116,13 @@ class StoreQPixmap:
 
 
 class Photo(StoreQPixmap):
+
+    def __init__(self, file_name):
+        super().__init__()
+        self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
+
+
+class PhotoWithMetadata(Photo):
     _SUPPORTED_MIME_TYPES = {
         "image/x-nikon-nef",  # NIKON NEF files
         "image/jpeg"  # JPEG
@@ -182,10 +189,9 @@ class Photo(StoreQPixmap):
         return cv2.imdecode(img_array, cv2_img_flag)  # cv2_imb_flag -> 0: gray | -1(negative):BGR color
 
     def __init__(self, file_name, metadata):
-        super().__init__()
+        super().__init__(file_name)
 
-        logger.debug('Photo Object istanciation started for %s', str(file_name))
-        self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a Photo unique ID - search how to compute this
+        logger.debug('PhotoWithMetadata Object istanciation started for %s', str(file_name))
         self.ctime = os.stat(file_name).st_ctime  # time of file creation on windows not to confuse with shot time
         # store all existing metadat in the file as return by exiftool - Dictionary of tag/values
         self.exif_metadata = metadata
@@ -203,7 +209,7 @@ class Photo(StoreQPixmap):
         # self._lock = threading.Lock()
         # for tag, value in self.exif_metadata.items():
         #     logger.debug(' tag %s has value %s', tag, value)
-        # logger.debug('Photo Object istanciation completed  for %s', file_name)
+        # logger.debug('PhotoWithMetadata Object istanciation completed  for %s', file_name)
         # TODO implement some minimal check that mandatory tags are presents else fail - how to fail an __init__ ?
         return
 
@@ -361,7 +367,7 @@ class Photo(StoreQPixmap):
                                      on Nikons where EXIF:ISO is not provided and replaced by MakerNotes:ISO. This is
                                      odd but that's the way it is.
 
-        :return: value for the first tag in the list that is valued in the Photo object or "NA" if tags not found
+        :return: value for the first tag in the list that is valued in the PhotoWithMetadata object or "NA" if tags not found
         '''
         # TODO migth consider to raise an exception and abort rather than returning NA for instance if EXIF:CaptureDate
         # TODO is not there, interval will not be computable and the whole thing will crash
@@ -827,12 +833,12 @@ class DuplicateGunnerFarnerback(DuplicateMethod):
 
 class PhotoCloned(StoreQPixmap):
     """
-    Photo cloned from the Photo class but not yet created on disk
-    Photo is created based on the CloneSet instance passed as first parameter
+    PhotoWithMetadata cloned from the PhotoWithMetadata class but not yet created on disk
+    PhotoWithMetadata is created based on the CloneSet instance passed as first parameter
 
     :parameter
 
-     cloned_set : reference to an instance of the CloneSet heritated class to be used for the cloned Photo creation
+     cloned_set : reference to an instance of the CloneSet heritated class to be used for the cloned PhotoWithMetadata creation
 
      precedent : reference of preceding picture - needed to compute timestamp of the PhotoCloned instance to be created
 
@@ -917,7 +923,7 @@ class PhotoCloned(StoreQPixmap):
 
     def get_tag_value(self, list_of_tag_synonyms=[]):
         '''
-        return value for the first tag that matches in the list by calling the same method on the Photo instance
+        return value for the first tag that matches in the list by calling the same method on the PhotoWithMetadata instance
         from which this virtual photo is cloned from.
         Except for filename and create date that are not the same and return from this method
         '''
@@ -962,13 +968,13 @@ class PhotoCloned(StoreQPixmap):
 
 class PhotoCollection:
     '''
-    Container for instance of the Photo class
+    Container for instance of the PhotoWithMetadata class
 
     This class is not to be used it is there to implement common methods for classes inheritating from it:
      - PhotoNonOrderedCollection
      - PhotoOrderedCollectionByCapturetime
 
-     It uses a list containing Photo instances as a data model
+     It uses a list containing PhotoWithMetadata instances as a data model
 
      It implements support for iterator and "in" type of use
     '''
@@ -1048,6 +1054,9 @@ class PhotoCollection:
         self._photo_collection = []
         return True
 
+    def add(self, photo_to_be_inserted, index=None):
+        raise NotImplementedError
+
     def set_stop_background_preview_load_event(self):
         self._stop_background_preview_load_event.set()
 
@@ -1060,7 +1069,7 @@ class PhotoCollection:
 
     def load_image_previews_in_memory(self, index_):
         """
-        this functions checks if preview image is already stored in the Photo class instance of the picture.
+        this functions checks if preview image is already stored in the PhotoWithMetadata class instance of the picture.
         If not it loads the preview
 
         function is called from the gui when a picture is clicked on the TableView and in a background thread that is
@@ -1153,7 +1162,7 @@ class PhotoCollection:
 
 class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION IS NOT NEEDED - PARENT ONE CAN DO
     '''
-    Collection of non ordered Photo
+    Collection of non ordered PhotoWithMetadata
     '''
 
     def __init__(self):
@@ -1431,15 +1440,18 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
 
         logger.info(" META DATA LOADED from files ")
 
-        # and then creates Photo class instances and populate container
+        # and then creates PhotoWithMetadata class instances and populate container
         for file_, metadata_ in resultats.items():
-            self.add(Photo(file_, metadata_))
+            try:
+                self.add(PhotoWithMetadata(file_, metadata_))
+            except Exception as e:
+                print(exception_to_string(e))
             if file_treated_tick_function_reference:
                 file_treated_tick_function_reference()  # second tick per file treated if function provided
 
         return len(self)
 
-    def add(self, photo_to_be_inserted):
+    def add(self, photo_to_be_inserted, index=None):
         if len(self._photo_collection) == 0:  # first element
             self._photo_collection.append(photo_to_be_inserted)
         # "younger" picture inserted @ first position
@@ -1539,7 +1551,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
 
         # we are almost safe now :-) adequation of duplicate_method with previous clone still to be checked
 
-        if isinstance(picture, Photo):  # Picture is a real one
+        if isinstance(picture, PhotoWithMetadata):  # Picture is a real one
             if picture.clone_set_with_next is None:  # picture has no clone yet
                 # create a CloneSet by instanciating the  loneSet subclass that is registered as a PhotoCloned
                 # class dictionnary - This spares the effort of implementing multiple if statements
@@ -1642,7 +1654,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
             return (status, message)
 
         # Check if row is physical picture or clone
-        if isinstance(picture, Photo):  # this is a physical picture
+        if isinstance(picture, PhotoWithMetadata):  # this is a physical picture
             # if the picture is used to build existing clone picture then it can't be deleted until all clones
             # are actually removed
             if (picture.clone_set_with_next is not None) or (picture.clone_set_with_previous is not None):
@@ -1679,7 +1691,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
         clone_index_list = [index for index in sorted_list_of_photo_index_2_be_duplicated if
                             isinstance(self._photo_collection[index], PhotoCloned)]
         photo_index_list = [index for index in sorted_list_of_photo_index_2_be_duplicated if
-                            isinstance(self._photo_collection[index], Photo)]
+                            isinstance(self._photo_collection[index], PhotoWithMetadata)]
 
         # first remove all clones as it is always possible to remove and it will "free-up" pictures with links
         # on clones that are to be deleted in the list
@@ -1754,7 +1766,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
         or by returning an in memory opencv3 image
         of by returning an in memory qpixmap image
 
-        if qpixmap option is requested stores the qpixmap image within the Photo or PhotoCloned instance of
+        if qpixmap option is requested stores the qpixmap image within the PhotoWithMetadata or PhotoCloned instance of
         the picture - as provided by those classes that inherits StoreQPixmap class - This is to cache results
         and allows computing only pictures with parameters changed on succesive iterations
 
@@ -1856,7 +1868,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
             sequence_file_name = target_directory + "\\LRT_{0:05d}".format(
                 index + 1) + ".jpg "  # TODO implement case where images are not jpg !
 
-            if isinstance(picture, Photo):  # this is a real picture - simply copy it to new directory
+            if isinstance(picture, PhotoWithMetadata):  # this is a real picture - simply copy it to new directory
 
                 # only jpeg is implemented
                 # if picture.exif_metadata["File:MIMEType"] != "image/jpeg":

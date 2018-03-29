@@ -37,7 +37,7 @@ from matplotlib.figure import Figure
 # QtDesigner generated code imports
 # from MyFithWindow import *
 
-from photo import PhotoCloned, Photo, PhotoCollection, PhotoNonOrderedCollection, PhotoOrderedCollectionByCapturetime, \
+from photo import PhotoCloned, PhotoWithMetadata, PhotoCollection, PhotoNonOrderedCollection, PhotoOrderedCollectionByCapturetime, \
     CloneSet, DuplicateMethod, DuplicateInterpolate, DuplicateLucasKanade, DuplicateSimpleCopy
 from My6thWindow import *
 from removeNoP import *
@@ -49,7 +49,7 @@ from MyVideoWindowQPixmap import *
 
 class ShowSummary:
     '''
-    Display Summary key values from a Photo container provided as inputs
+    Display Summary key values from a PhotoWithMetadata container provided as inputs
 
     It uses methods of PhotoCollection and PhotoOrderedColletionByCapturetime
 
@@ -309,7 +309,7 @@ class MyTableModel(QAbstractTableModel):
     '''
 
         photo_ordered_collection:
-                    is an instance of the class PhotoOrderedCollectionByCapturetime containing instances of Photo class
+                    is an instance of the class PhotoOrderedCollectionByCapturetime containing instances of PhotoWithMetadata class
                     to be treated by the model
 
         title_dict : Dictionary of list
@@ -347,7 +347,7 @@ class MyTableModel(QAbstractTableModel):
                 return QVariant(QColor(Qt.black))
         elif role == Qt.FontRole:
             font = QFont()
-            if isinstance(self.photo_container[index.row()], Photo):
+            if isinstance(self.photo_container[index.row()], PhotoWithMetadata):
                 font.setWeight(QFont.DemiBold)
                 return QVariant(font)
             else:
@@ -363,10 +363,10 @@ class MyTableModel(QAbstractTableModel):
             )
             )
             # return QVariant(self.photo_container[position.row()].get_tag_value(self.title_and_tags[position.column()]))
-            # TODO Photo.get_tag_value  to be implemented
+            # TODO PhotoWithMetadata.get_tag_value  to be implemented
         elif index.column() == len(self.title_and_tags):
             text = "N/A"
-            if isinstance(self.photo_container[index.row()], Photo): text = "original"
+            if isinstance(self.photo_container[index.row()], PhotoWithMetadata): text = "original"
             if isinstance(self.photo_container[index.row()], PhotoCloned):
                 text = self.photo_container[index.row()].duplicate_method
             return QVariant(text)
@@ -711,7 +711,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         super(ModelToViewController, self).__init__(parent)
         self.setupUi(self)
 
-        # create Photo containers for active photos and discarded ones
+        # create PhotoWithMetadata containers for active photos and discarded ones
         self.active_photos = PhotoOrderedCollectionByCapturetime()
         self.active_photos_backup = PhotoOrderedCollectionByCapturetime()
         self.discarded_photos = PhotoNonOrderedCollection()
@@ -737,11 +737,11 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.my_directory = TreeViewPopulate(self)
         self.treeView.doubleClicked.connect(self.handle_load_files_from_directory)
 
-        # initialize matplotlib canvas and size of preview image in Photo class based on size of matplotlibwidget
+        # initialize matplotlib canvas and size of preview image in PhotoWithMetadata class based on size of matplotlibwidget
         self.my_graph = ImageAndPlotDisplayWithMatplotlib(self.matplotlibwidget)
-        Photo.set_matplotlib_image_preview_size(self.matplotlibwidget.frameGeometry().width() * 0.95
-                                                , self.matplotlibwidget.frameGeometry().height() * 0.95
-                                                )
+        PhotoWithMetadata.set_matplotlib_image_preview_size(self.matplotlibwidget.frameGeometry().width() * 0.95
+                                                            , self.matplotlibwidget.frameGeometry().height() * 0.95
+                                                            )
 
         # initialize picture display_upon_sliderReleased_signal
         self.my_slider = SliderManager(self)
@@ -757,6 +757,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.PicklePushButton.clicked.connect(self.handle_pickle_button)
         self.UnpicklePushButton.clicked.connect(self.handle_unpickle_button)
         self.ShowImageRadioButton.setChecked(False)
+
         # self.ShowImageRadioButton.toggled.connect(self.my_graph.toggle_image_to_be_shown)
         self.ShowImageRadioButton.toggled.connect(self.toggle_image_to_be_shown)
 
@@ -829,7 +830,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         if not self.image_preview_load_completed:
             self.active_photos.set_stop_background_preview_load_event()
 
-        # wipe Photo containers after taking copy of them and their path in case no file is loaded
+        # wipe PhotoWithMetadata containers after taking copy of them and their path in case no file is loaded
         keep_working_directory = os.getcwd()
         self._save_context()
         self.active_photos.reset()
@@ -853,7 +854,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
             self._restore_context()
             msgbox_txt = "No elligible file found in {}\nprevious folder remain loaded".format(str(file_path))
 
-        # load compute and display_upon_sliderReleased_signal Photo details, Summary and Graph of Intervals
+        # load compute and display_upon_sliderReleased_signal PhotoWithMetadata details, Summary and Graph of Intervals
         self.myTable = ShowTableView(self, self.active_photos)
         self.my_list = ShowSummary(self.listView, self.active_photos)
         self.my_graph.compute_and_display_figure(self.active_photos)
@@ -869,7 +870,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         # inform about status of load
         QMessageBox.about(self, PROGRAM_NAME, msgbox_txt)
         self.toggle_progress_bar()  # close progress bar
-        logger.info(" %s PHOTOS LOADED in Photo Class ", str(len(self.active_photos)))
+        logger.info(" %s PHOTOS LOADED in PhotoWithMetadata Class ", str(len(self.active_photos)))
 
         return
 
@@ -1126,7 +1127,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         #     picture_index = row_start + (i * (nb_of_times_to_duplicate + 1))
         #     for _ in range(nb_of_times_to_duplicate):
         #         inner_picture_index = picture_index
-        #         # identify real Photo to clone from in case preceding photo is already virtual
+        #         # identify real PhotoWithMetadata to clone from in case preceding photo is already virtual
         #         cloned_from = self.active_photos[inner_picture_index]
         #         if isinstance(cloned_from, PhotoCloned):
         #             cloned_from = cloned_from.cloned_from
