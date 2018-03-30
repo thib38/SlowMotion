@@ -50,6 +50,9 @@ class StoreQPixmap:
     """
     This class is not to be instantiated and is there to provide classes that will inherits from it the ability to store
     picture formated in different ways
+
+    It is needed because QT Qpixmap are not natively pickable and thereroe it implements a way to pickling qpixmap
+    into a Qbytearray. Else a simple dictionnary would have been enough
     """
 
     def __init__(self):
@@ -120,6 +123,25 @@ class Photo(StoreQPixmap):
     def __init__(self, file_name):
         super().__init__()
         self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
+
+        # store matploblib ready image preview (numpy RGB)  so as to speed up display in interface
+        self._matplotlib_image_preview = None
+        # store reference to the CloneSet for clone picture following this picture
+        self.clone_set_with_next = None
+        # store reference to the CloneSet for clone picture preceeding this picture
+        self.clone_set_with_previous = None
+
+    def get_matplotlib_image_preview(self):
+        raise NotImplementedError
+
+    def get_opencv_image_fullsize(self):
+        """
+        Return the full definition image in an opencv mumpy BGR format if the mime/type is implemented
+        else it returns False
+
+        :return:
+        """
+        raise NotImplementedError
 
 
 class PhotoWithMetadata(Photo):
@@ -199,12 +221,6 @@ class PhotoWithMetadata(Photo):
         self._shot_time = __class__.exif_info_2_time(self.exif_metadata["EXIF:CreateDate"])
         # stores binary image preview whatever the file type so size can be very different (NEF vs JPEG Thumbnail)
         self._binary_image_preview = None
-        # store matploblib ready image preview (numpy RGB)  so as to speed up display in interface
-        self._matplotlib_image_preview = None
-        # store reference to the CloneSet for clone picture following this picture
-        self.clone_set_with_next = None
-        # store reference to the CloneSet for clone picture preceeding this picture
-        self.clone_set_with_previous = None
         # to be used in any method that updates values so that multi threading is safe
         # self._lock = threading.Lock()
         # for tag, value in self.exif_metadata.items():
