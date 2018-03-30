@@ -286,7 +286,7 @@ class PhotoWithMetadata(Photo):
             return False
 
         elif self.exif_metadata["File:MIMEType"] == "image/jpeg":
-            img_cv2 = cv2.imread(self.file_name, cv2.IMREAD_COLOR)
+             img_cv2 = cv2.imread(self.file_name, cv2.IMREAD_COLOR)
 
         elif self.exif_metadata["File:MIMEType"] == "image/x-nikon-nef":
 
