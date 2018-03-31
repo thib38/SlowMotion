@@ -136,10 +136,15 @@ class Photo(StoreQPixmap):
         tpl = time.strptime(ts + 'UTC', '%Y:%m:%d %H:%M:%S%Z')
         return time.mktime(tpl)
 
-    def __init__(self, file_name):
+    def __init__(self, file_name, metadata):
         super().__init__()
         self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
 
+        # store all existing metadat in the file as return by exiftool
+        # Dictionary of tag/values
+        self.exif_metadata = metadata
+        # compute capture time in numeric time format out of exif string format - avoid to compute multiple times later
+        self._shot_time = __class__.exif_info_2_time(self.exif_metadata["EXIF:CreateDate"])
         # store matploblib ready image preview (numpy RGB)  so as to speed up display in interface
         self._matplotlib_image_preview = None
         # store reference to the CloneSet for clone picture following this picture
@@ -264,14 +269,10 @@ class PhotoWithMetadata(Photo):
         return cv2.imdecode(img_array, cv2_img_flag)  # cv2_imb_flag -> 0: gray | -1(negative):BGR color
 
     def __init__(self, file_name, metadata):
-        super().__init__(file_name)
+        super().__init__(file_name, metadata)
 
         logger.debug('PhotoWithMetadata Object istanciation started for %s', str(file_name))
-        self.ctime = os.stat(file_name).st_ctime  # time of file creation on windows not to confuse with shot time
-        # store all existing metadat in the file as return by exiftool - Dictionary of tag/values
-        self.exif_metadata = metadata
-        # compute capture time in numeric time format out of exif string format - avoid to compute multiple times later
-        self._shot_time = __class__.exif_info_2_time(self.exif_metadata["EXIF:CreateDate"])
+
         # stores binary image preview whatever the file type so size can be very different (NEF vs JPEG Thumbnail)
         self._binary_image_preview = None
         # to be used in any method that updates values so that multi threading is safe
@@ -457,8 +458,6 @@ class PhotoWithMetadata(Photo):
 
     def __repr__(self):
         _string = ("FILE NAME = " + str(self.file_name) + "\n")
-        _string += ("FILE creation timestamp ="
-                    + str(datetime.datetime.fromtimestamp(self.ctime).strftime('%Y-%m-%d %H:%M:%S')) + "\n")
         _string += ("PICTURE capture timestamp ="
                     + str(datetime.datetime.fromtimestamp(self._shot_time).strftime('%Y-%m-%d %H:%M:%S')) + "\n")
         _string += ("PICTURE TAG VALUES : \n")
@@ -476,7 +475,6 @@ class PhotoWithMetadata(Photo):
         state = {}
 
         state["file_name"] = self.file_name
-        state["ctime"] = self.ctime
         state["exif_metadata"] = self.exif_metadata
         state["_shot_time"] = self._shot_time
         state["_binary_image_preview"] = self._binary_image_preview
@@ -495,8 +493,6 @@ class PhotoWithMetadata(Photo):
 
         self.file_name = state["file_name"]
         del state["file_name"]
-        self.ctime = state["ctime"]
-        del state["ctime"]
         self.exif_metadata = state["exif_metadata"]
         del state["exif_metadata"]
         self._shot_time = state["_shot_time"]
@@ -1135,6 +1131,11 @@ class PhotoCollection:
     def clear_stop_background_preview_load_event(self):
         self._stop_background_preview_load_event.clear()
 
+    def load_metadata_from_files(self, file_list, file_suffixes_in_scope=None,
+                                 file_treated_tick_function_reference=False):
+        raise NotImplementedError
+
+
 
     def load_image_previews_in_memory(self, index_):
         """
@@ -1243,6 +1244,88 @@ class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION
         return
 
     # TODO implement __repr__
+
+
+class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
+
+    _video_properties = {}
+
+    # properties of the video made avlailable by opencv3
+    VIDEO_PROPERTIES = { "CAP_PROP_FRAME_HEIGHT",
+                         "CAP_PROP_FRAME_WIDTH",
+                         "CAP_PROP_FPS",
+                         "CAP_PROP_FRAME_COUNT",
+                         "CAP_PROP_FORMAT",
+                         "CAP_PROP_MODE",
+                         "CAP_PROP_BRIGHTNESS",
+                         "CAP_PROP_CONTRAST",
+                         "CAP_PROP_SATURATION",
+                         "CAP_PROP_HUE",
+                         "CAP_PROP_GAIN",
+                         "CAP_PROP_EXPOSURE",
+                         "CAP_PROP_CONVERT_TO_RGB",
+                         "CAP_PROP_PROP_WHITE_BALANCE",
+                         "CAP_PROP_PROP_RECTIFICATION" }
+
+
+    def __init__(self):
+        super().__init__()
+        raise NotImplementedError
+        return
+
+    def load_metadata_from_files(self, video_file, file_suffixes_in_scope=None,
+                                 file_treated_tick_function_reference=False):
+        """
+        load the description of frames stored in vidoe_file passed as first parameter ans stores as class attribute
+        the property of the video for further reference.
+        TODO second parameter is o far ignored - could be implemente later.
+        Optionnally a function passed as third parameter can be called each time a file from the list is treated so
+        that ui can display progress
+
+        :param video_file: a list containing a unique item which is the video file to extract frames from
+        :param file_suffixes_in_scope: not implemented for video - kept for compatibilty with other collections
+        :param file_treated_tick_function_reference: a function that will be called every time a file is treated
+        :return:
+
+        How to read a single frame with its index is documented here:
+        https://stackoverflow.com/questions/46100858/how-to-get-frame-from-video-by-its-index-via-opencv-and-python?rq=1&utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+        """
+        cap = cv2.VideoCapture(video_file)
+        # TODO TEST IF REader opening is OK
+
+        # get video property
+        for property_id in __class__.VIDEO_PROPERTIES:
+            __class__._video_properties[property_id] = cap.get(property_id)
+        if __debug__:
+            logger.info("VIDEO PROPERTIES for %s = %s", str(video_file), str(__class__._video_properties))
+
+        # load picture
+        for i in range(1, __class__._video_properties["CAP_PROP_FRAME_COUNT"] + 1):  # Frame count starts at 1
+
+            # build fake file name made of videofile + file index on 6 digits (can cope with 9 hours 30fps)
+            file_name = video_file + "{0:06d}".format(i)   # TODO no suffix so far...tb clarified
+            # build fake medtadata
+
+
+            self.add(Photo(file_, metadata_))
+
+            ret, frame = cap.read()
+            if file_treated_tick_function_reference:
+                file_treated_tick_function_reference()  # one tick per file treated if function provided
+
+        logger.info(" META DATA LOADED from video_file ")
+
+        # and then creates PhotoWithMetadata class instances and populate container
+        for file_, metadata_ in resultats.items():
+            try:
+                self.add(PhotoWithMetadata(file_, metadata_))
+            except Exception as e:
+                print(exception_to_string(e))
+            if file_treated_tick_function_reference:
+                file_treated_tick_function_reference()  # second tick per file treated if function provided
+
+        return len(self)
+
 
 
 class PhotoOrderedCollectionByCapturetime(PhotoCollection):
@@ -1431,14 +1514,14 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
         q_results.put(False)  # TODO investigate what can be done with end task that i saw somewher in the doc
         return
 
-    def load_metadata_from_list_of_files(self, file_list, file_suffixes_in_scope,
-                                         file_treated_tick_function_reference=False):
+    def load_metadata_from_files(self, files, file_suffixes_in_scope,
+                                 file_treated_tick_function_reference=False):
         """
         load the list of files passed as first parameter for the file suffix passed in second parameter.
         Optionnally a function passed as third parameter can be called each time a file from the list is treated so
         that ui can display progress
 
-        :param file_list: a list containinf files to be loaded
+        :param files: a list containinf files to be loaded
         :param file_suffixes_in_scope: a list containing the suffix to be considered  i.e. [".NEF", ".JPG", ".jpg"]
         :param file_treated_tick_function_reference: a function that will be called every time a file is treated
         :return:
@@ -1466,7 +1549,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
             return list_of_list
 
         # split the file list in several chunks that will be treated in parrallel by subprocesses
-        chunks = list_2_listoflist_by_chunk(file_list,
+        chunks = list_2_listoflist_by_chunk(files,
                                             __class__._size_of_file_chunks)  # divide the work by chunk of 300 files
 
         # prepare environment for communicating with sub processes

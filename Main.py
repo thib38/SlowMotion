@@ -846,7 +846,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         logger.info(" START PHOTO META DATA EXTRACTION OF TYPE %s FROM %s", VALID_SUFFIX, str(file_path))
         self.ShowImageRadioButton.setChecked(False)
 
-        if self.active_photos.load_metadata_from_list_of_files(file_list, VALID_SUFFIX, progress_bar_ticker.tick) > 0:
+        if self.active_photos.load_metadata_from_files(file_list, VALID_SUFFIX, progress_bar_ticker.tick) > 0:
             self.statusbar_message_qlabel.setText("files from :" + str(file_path))
             msgbox_txt = "Photos successfully loaded"
         else:  # no picture found restore previous folder
