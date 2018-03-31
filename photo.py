@@ -130,6 +130,12 @@ class Photo(StoreQPixmap):
     def get_matplotlib_image_preview_size(cls):
         return cls._matplotlib_image_preview_size
 
+    @staticmethod
+    def exif_info_2_time(ts):
+        """changes EXIF date ('2005:10:20 23:22:28') to number of seconds since 1970-01-01"""
+        tpl = time.strptime(ts + 'UTC', '%Y:%m:%d %H:%M:%S%Z')
+        return time.mktime(tpl)
+
     def __init__(self, file_name):
         super().__init__()
         self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
@@ -243,12 +249,6 @@ class PhotoWithMetadata(Photo):
     @classmethod
     def get_set_of_supported_mime_types(cls):
         return cls._SUPPORTED_MIME_TYPES
-
-    @staticmethod
-    def exif_info_2_time(ts):
-        """changes EXIF date ('2005:10:20 23:22:28') to number of seconds since 1970-01-01"""
-        tpl = time.strptime(ts + 'UTC', '%Y:%m:%d %H:%M:%S%Z')
-        return time.mktime(tpl)
 
     @staticmethod
     def _create_opencv_image_from_bytesio(img_stream, cv2_img_flag=0):
