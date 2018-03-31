@@ -120,6 +120,16 @@ class StoreQPixmap:
 
 class Photo(StoreQPixmap):
 
+    _matplotlib_image_preview_size = (600, 400)
+
+    @classmethod
+    def set_matplotlib_image_preview_size(cls, width, height):
+        __class__._matplotlib_image_preview_size = (int(abs(width)), int(abs(height)))
+
+    @classmethod
+    def get_matplotlib_image_preview_size(cls):
+        return cls._matplotlib_image_preview_size
+
     def __init__(self, file_name):
         super().__init__()
         self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
@@ -143,6 +153,57 @@ class Photo(StoreQPixmap):
         """
         raise NotImplementedError
 
+    def __lt__(self, other):
+        raise NotImplementedError
+
+    def __getstate__(self):
+        raise NotImplementedError
+        # TODO DEBUG REMOVE REMOVE
+        # for key in self.__dict__.keys():
+        #     print(key)
+
+        state = {}
+
+        state["file_name"] = self.file_name
+        # state["ctime"] = self.ctime
+        # state["exif_metadata"] = self.exif_metadata
+        # state["_shot_time"] = self._shot_time
+        # state["_binary_image_preview"] = self._binary_image_preview
+        state["_matplotlib_image_preview"] = self._matplotlib_image_preview
+        state["clone_set_with_next"] = self.clone_set_with_next
+        state["clone_set_with_previous"] = self.clone_set_with_previous
+
+        # then call pickle for StoreQpixmap moke class
+        store_qpixmap_state = self._pickle_stored_qpixmap()
+        for key, value in store_qpixmap_state.items():
+            state[key] = value
+
+        return state
+
+    def __setstate__(self, state):
+
+        self.file_name = state["file_name"]
+        del state["file_name"]
+        # self.ctime = state["ctime"]
+        # del state["ctime"]
+        # self.exif_metadata = state["exif_metadata"]
+        # del state["exif_metadata"]
+        # self._shot_time = state["_shot_time"]
+        # del state["_shot_time"]
+        # self._binary_image_preview = state["_binary_image_preview"]
+        # del state["_binary_image_preview"]
+        self._matplotlib_image_preview = state["_matplotlib_image_preview"]
+        del state["_matplotlib_image_preview"]
+        self.clone_set_with_next = state["clone_set_with_next"]
+        del state["clone_set_with_next"]
+        self.clone_set_with_previous = state["clone_set_with_previous"]
+        del state["clone_set_with_previous"]
+
+        # then call unpickle for StoreQpixmap moke class - what remains in state is for StoreQpixmap
+        self._unpickle_stored_qpixmap(state)
+
+        return
+
 
 class PhotoWithMetadata(Photo):
     _SUPPORTED_MIME_TYPES = {
@@ -156,7 +217,6 @@ class PhotoWithMetadata(Photo):
         "image/jpeg": ["EXIF:ThumbnailOffset", "EXIF:ThumbnailLength"]
     }
 
-    _matplotlib_image_preview_size = (600, 400)
 
     # # TODO no longer used kept for future code improvment
     # RAW_FILE_TYPES = {
@@ -179,13 +239,6 @@ class PhotoWithMetadata(Photo):
     # # TODO no longer used kept for future code improvment
     # JPEG_FILE_TYPES = {"JPEG"}
 
-    @classmethod
-    def set_matplotlib_image_preview_size(cls, width, height):
-        __class__._matplotlib_image_preview_size = (int(abs(width)), int(abs(height)))
-
-    @classmethod
-    def get_matplotlib_image_preview_size(cls):
-        return cls._matplotlib_image_preview_size
 
     @classmethod
     def get_set_of_supported_mime_types(cls):
