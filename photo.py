@@ -1290,7 +1290,6 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         https://stackoverflow.com/questions/46100858/how-to-get-frame-from-video-by-its-index-via-opencv-and-python?rq=1&utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
         """
         cap = cv2.VideoCapture(video_file)
-        # TODO TEST IF REader opening is OK
 
         # get video property
         for property_id in __class__.VIDEO_PROPERTIES:
@@ -1298,21 +1297,27 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         if __debug__:
             logger.info("VIDEO PROPERTIES for %s = %s", str(video_file), str(__class__._video_properties))
 
-        time_ = time.time()
+        time_ = os.stat(video_file).st_ctime  # creation time of the file as timestamp of video
         # load picture
         for i in range(1, __class__._video_properties[cv2.CAP_PROP_FRAME_COUNT] + 1):  # Frame count starts at 1
 
             ret, frame = cap.read()
 
             # build fake file name made of videofile + file index on 6 digits (can cope with 9 hours 30fps)
-            file_name = video_file + "{0:06d}".format(i)   # TODO no suffix so far...tb clarified
+            file_name = "".join(video_file.split(".")[:-1]) + "_{0:06d}".format(i)  # TODO no suffix added..tb clarified
+
             # build fake metadata containing only create date in EXIF format "YYYY:mm:dd HH:MM:SS"
             metadata = {}
-            csec = cap.get(cv2.CAP_PROP_POS_MSEC) / 10
-            metadata["EXIF:CreateDate"] = str(datetime.datetime.fromtimestamp(csec).strftime('%Y-%m-%d %H:%M:%S'))
+            frame_fake_time = time_ + cap.get(cv2.CAP_PROP_POS_MSEC) / 10  # so that frames  have different seconds
+            metadata["EXIF:CreateDate"] = \
+                str(datetime.datetime.fromtimestamp(frame_fake_time).strftime('%Y-%m-%d %H:%M:%S'))
 
+            # add photo to collection
+            self.add(PhotoXXX(file_name, metadata))
 
-            self.add(Photo(file_, metadata_))
+            # compute and add qpixmap
+
+            # store full size image ? or not as it can be accessed directly
 
             if file_treated_tick_function_reference:
                 file_treated_tick_function_reference()  # one tick per file treated if function provided
