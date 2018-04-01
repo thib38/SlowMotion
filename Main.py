@@ -873,13 +873,19 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.my_slider.set_cursor(0)
 
         # start or restart background threads that will load pictures in memory in background
+        self.toggle_progress_bar()  # close progress bar
+        self.status_message_preserved = self.statusbar_message_qlabel.text()
+        self.statusbar_message_qlabel.setText("loading image previews...")
+        progress_bar_ticker = StatusProgressBarTicker(len(self.active_photos))
         self.image_preview_load_completed = False
         self.thread_list = self.active_photos.launch_background_picture_loader_threads(
+            progress_bar_ticker.tick,
             self.BackgroundPictureLoadCompleted.emit
         )
 
         # inform about status of load
         QMessageBox.about(self, PROGRAM_NAME, msgbox_txt)
+        logger.info(" %s PHOTOS LOADED in Photo Class ", str(len(self.active_photos)))
         self.toggle_progress_bar()  # close progress bar
         logger.info(" %s PHOTOS LOADED in PhotoWithMetadata Class ", str(len(self.active_photos)))
 
@@ -887,6 +893,8 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
 
     def upon_background_picture_load_completed(self):
         self.image_preview_load_completed = True
+        self.toggle_progress_bar()
+        self.statusbar_message_qlabel.setText(self.status_message_preserved)
         self.my_slider.slider_connect_valueChanged_signal_slot()
         self.ShowImageRadioButton.setChecked(True)  # check radio button and activate display of image
 
@@ -1533,7 +1541,7 @@ if __name__ == "__main__":
     logger.addHandler(handler_file)
     logger.addHandler(handler_console)
 
-    VERSION = "V0.9"
+    VERSION = "V0.9.1"
     PROGRAM_NAME = "PHOTO INTERVAL MANAGER"
 
     TAG_DICTIONNARY = OrderedDict({

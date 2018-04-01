@@ -1043,7 +1043,7 @@ class PhotoCollection:
 
      It implements support for iterator and "in" type of use
     '''
-    _nb_of_background_picture_loading_threads = 3
+    _nb_of_background_picture_loading_threads = 5
 
     def __init__(self):
 
@@ -1159,12 +1159,33 @@ class PhotoCollection:
 
         return loaded
 
+    def launch_background_picture_loader_threads(self,
+                                                 progress_bar_ticker_function_reference=False,
+                                                 load_completed_signal_emit_function_reference=False):
+        logger.info(" IMAGE PREVIEW BACKGROUND LOADING STARTED")
+        thread_list = []
+        for index_ in range(__class__._nb_of_background_picture_loading_threads):
+            t = threading.Thread(target=self._load_active_photos_preview_pictures_in_memory,
+                                 args=(self._stop_background_preview_load_event,
+                                       self._update_background_preview_load_event,
+                                       self._update_background_barrier,
+                                       index_,
+                                       __class__._nb_of_background_picture_loading_threads,
+                                       progress_bar_ticker_function_reference,
+                                       load_completed_signal_emit_function_reference)
+                                 )
+            t.daemon = True
+            t.start()
+            thread_list.append(t)
+        return thread_list
+
     def _load_active_photos_preview_pictures_in_memory(self,
                                                        stop_event,
                                                        update_event,
                                                        barrier,
                                                        index_,
                                                        step,
+                                                       progress_bar_ticker_function_reference,
                                                        load_completed_signal_emit_function_reference):
         """
         This function is to be used in // threads. It loads preview images of the ui.active_photos list.
@@ -1204,6 +1225,8 @@ class PhotoCollection:
                 pos = i + index_
                 if pos <= len(self._photo_collection) - 1:
                     self.load_image_previews_in_memory(pos)
+                    if progress_bar_ticker_function_reference:
+                        progress_bar_ticker_function_reference()
         rc = barrier.wait()  # wait all tasks to complete
         if rc == 0:
             if load_completed_signal_emit_function_reference:
@@ -1211,24 +1234,6 @@ class PhotoCollection:
             logger.info(" IMAGE PREVIEW BACKGROUND LOADING COMPLETED")
 
         return None
-
-    def launch_background_picture_loader_threads(self, load_completed_signal_emit_function_reference=False):
-        logger.info(" IMAGE PREVIEW BACKGROUND LOADING STARTED")
-        thread_list = []
-        for index_ in range(__class__._nb_of_background_picture_loading_threads):
-            t = threading.Thread(target=self._load_active_photos_preview_pictures_in_memory,
-                                 args=(self._stop_background_preview_load_event,
-                                       self._update_background_preview_load_event,
-                                       self._update_background_barrier,
-                                       index_,
-                                       __class__._nb_of_background_picture_loading_threads,
-                                       load_completed_signal_emit_function_reference)
-                                 )
-            t.daemon = True
-            t.start()
-            thread_list.append(t)
-        return thread_list
-
 
 class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION IS NOT NEEDED - PARENT ONE CAN DO
     '''
