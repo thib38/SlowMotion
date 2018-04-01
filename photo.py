@@ -153,6 +153,7 @@ class Photo(StoreQPixmap):
         self.clone_set_with_previous = None
 
     def get_matplotlib_image_preview(self):
+        logger.error("NotImplementedError")
         raise NotImplementedError
 
     def get_opencv_image_fullsize(self):
@@ -162,12 +163,38 @@ class Photo(StoreQPixmap):
 
         :return:
         """
+        logger.error("NotImplementedError")
         raise NotImplementedError
 
+    def get_tag_value(self, list_of_tag_synonyms=[]):
+        '''
+        return value for the first tag that matches in the list
+
+        :param list_of_tag_synonyms: a list containing tags that will be interpreted in order. If no value for first
+                                     one then value for second is searched, and so on and so forth till end of list
+                                     This is implemented to accommodate at least the case of low ISO (lower than 100)
+                                     on Nikons where EXIF:ISO is not provided and replaced by MakerNotes:ISO. This is
+                                     odd but that's the way it is.
+
+        :return: value for the first tag in the list that is valued in the PhotoWithMetadata object or "NA" if tags not found
+        '''
+        # TODO migth consider to raise an exception and abort rather than returning NA for instance if EXIF:CaptureDate
+        # TODO is not there, interval will not be computable and the whole thing will crash
+        result = "NA"
+        for i in range(len(list_of_tag_synonyms)):
+            try:
+                result = self.exif_metadata[list_of_tag_synonyms[i]]
+            except KeyError:  # no tag for the first tag value - try other values if more alternatives are provided
+                pass
+
+        return result
+
     def __lt__(self, other):
+        logger.error("NotImplementedError")
         raise NotImplementedError
 
     def __getstate__(self):
+        logger.error("NotImplementedError")
         raise NotImplementedError
         # TODO DEBUG REMOVE REMOVE
         # for key in self.__dict__.keys():
@@ -427,29 +454,6 @@ class PhotoWithMetadata(Photo):
 
         return img_cv2
 
-    def get_tag_value(self, list_of_tag_synonyms=[]):
-        '''
-        return value for the first tag that matches in the list
-
-        :param list_of_tag_synonyms: a list containing tags that will be interpreted in order. If no value for first
-                                     one then value for second is searched, and so on and so forth till end of list
-                                     This is implemented to accommodate at least the case of low ISO (lower than 100)
-                                     on Nikons where EXIF:ISO is not provided and replaced by MakerNotes:ISO. This is
-                                     odd but that's the way it is.
-
-        :return: value for the first tag in the list that is valued in the PhotoWithMetadata object or "NA" if tags not found
-        '''
-        # TODO migth consider to raise an exception and abort rather than returning NA for instance if EXIF:CaptureDate
-        # TODO is not there, interval will not be computable and the whole thing will crash
-        result = "NA"
-        for i in range(len(list_of_tag_synonyms)):
-            try:
-                result = self.exif_metadata[list_of_tag_synonyms[i]]
-            except KeyError:  # no tag for the first tag value - try other values if more alternatives are provided
-                pass
-
-        return result
-
     # TODO should this sort be maintained ? if i want the container class to be orderd on different tag the
     # TODO ordering should be managed in the container PhotoCollection and not in thePhoto itself that should
     # TODO remain agnostic vis-a-vis the sorting criteria
@@ -597,9 +601,11 @@ class DuplicateMethod:
 
     @property
     def computation_parameters(self):
+        logger.error("NotImplementedError")
         raise NotImplementedError
 
     def create_transition_image(self, img_before, img_after, nb_intervals=None, interval_rank=None):
+        logger.error("NotImplementedError")
         raise NotImplementedError
 
 
@@ -1120,6 +1126,7 @@ class PhotoCollection:
         return True
 
     def add(self, photo_to_be_inserted, index=None):
+        logger.error("NotImplementedError")
         raise NotImplementedError
 
     def set_stop_background_preview_load_event(self):
@@ -1131,8 +1138,9 @@ class PhotoCollection:
     def clear_stop_background_preview_load_event(self):
         self._stop_background_preview_load_event.clear()
 
-    def load_metadata_from_files(self, file_list, file_suffixes_in_scope=None,
+    def load_metadata_from_files(self, file_path, file_suffixes_in_scope=None,
                                  file_treated_tick_function_reference=False):
+        logger.error("NotImplementedError")
         raise NotImplementedError
 
 
@@ -1274,6 +1282,7 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
 
     def __init__(self):
         super().__init__()
+        logger.error("NotImplementedError")
         raise NotImplementedError
         return
 
@@ -1306,9 +1315,9 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         # load picture
         for i in range(1, __class__._video_properties[cv2.CAP_PROP_FRAME_COUNT] + 1):  # Frame count starts at 1
 
-            ret, frame = cap.read()
+            ret, frame = cap.read()  # return a numpy array BGR in frame
 
-            # build fake file name made of videofile + file index on 6 digits (can cope with 9 hours 30fps)
+            # build fake file name made from videofile + file index on 6 digits (can cope with 9 hours 30fps)
             file_name = "".join(video_file.split(".")[:-1]) + "_{0:06d}".format(i)  # TODO no suffix added..tb clarified
 
             # build fake metadata containing only create date in EXIF format "YYYY:mm:dd HH:MM:SS"
@@ -1339,7 +1348,6 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
                 file_treated_tick_function_reference()  # second tick per file treated if function provided
 
         return len(self)
-
 
 
 class PhotoOrderedCollectionByCapturetime(PhotoCollection):
@@ -1528,7 +1536,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
         q_results.put(False)  # TODO investigate what can be done with end task that i saw somewher in the doc
         return
 
-    def load_metadata_from_files(self, files, file_suffixes_in_scope,
+    def load_metadata_from_files(self, folder, file_suffixes_in_scope=None,
                                  file_treated_tick_function_reference=False):
         """
         load the list of files passed as first parameter for the file suffix passed in second parameter.
@@ -1562,8 +1570,11 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
 
             return list_of_list
 
+        # get list of files in folder
+        file_list = os.listdir(folder)
+
         # split the file list in several chunks that will be treated in parrallel by subprocesses
-        chunks = list_2_listoflist_by_chunk(files,
+        chunks = list_2_listoflist_by_chunk(file_list,
                                             __class__._size_of_file_chunks)  # divide the work by chunk of 300 files
 
         # prepare environment for communicating with sub processes
@@ -1785,6 +1796,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
             # distribute equal intervals between picture in clone set
             self.evenly_distribute_interval_over_clone_pictures_in_cloneset(duplicated_picture.clone_set)
         else:
+            logger.error("NotImplementedError")
             raise NotImplementedError
 
         return (status, message, duplicated_picture)
@@ -1843,6 +1855,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
 
             # TODO NOT IN ALL CASES duplicated_picture.clone_set.evenly_distribute_interval_over_clone_pictures_in_cloneset()
         else:
+            logger.error("NotImplementedError")
             raise NotImplementedError
 
         return (status, message)

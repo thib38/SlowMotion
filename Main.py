@@ -34,10 +34,13 @@ from PyQt5.QtWidgets import QMainWindow, QSizePolicy, QHeaderView, QFileSystemMo
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+
+import cv2
 # QtDesigner generated code imports
 # from MyFithWindow import *
 
-from photo import PhotoCloned, PhotoWithMetadata, PhotoCollection, PhotoNonOrderedCollection, PhotoOrderedCollectionByCapturetime, \
+from photo import Photo, PhotoCloned, PhotoWithMetadata, PhotoCollection, PhotoNonOrderedCollection,\
+    PhotoOrderedCollectionByCapturetime, PhotoOrderedCollectionFromVideoRead,\
     CloneSet, DuplicateMethod, DuplicateInterpolate, DuplicateLucasKanade, DuplicateSimpleCopy
 from My6thWindow import *
 from removeNoP import *
@@ -371,7 +374,7 @@ class MyTableModel(QAbstractTableModel):
             # TODO PhotoWithMetadata.get_tag_value  to be implemented
         elif index.column() == len(self.title_and_tags):
             text = "N/A"
-            if isinstance(self.photo_container[index.row()], PhotoWithMetadata): text = "original"
+            if isinstance(self.photo_container[index.row()], Photo): text = "original"
             if isinstance(self.photo_container[index.row()], PhotoCloned):
                 text = self.photo_container[index.row()].duplicate_method
             return QVariant(text)
@@ -820,13 +823,6 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         #  update graph
         self.my_graph.compute_and_display_figure(self.active_photos)
 
-    def toggle_image_to_be_shown(self):
-
-        if self.ShowImageRadioButton.isChecked():
-            self.my_graph.set_image_to_be_shown()
-        else:
-            self.my_graph.clear_image_to_be_shown()
-
     def handle_load_files_from_directory(self, signal):
 
         file_path = self.treeView.model().filePath(signal)
@@ -835,7 +831,27 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         if "." + file_path.split(".")[-1] in VALID_VIDEO_FILE_SUFFIXES:
             # this is a video
             logger.info("VIDEO DETECTED %s", file_path)
+            input_media_is_file = False
+            logger.error("NotImplementedError")
             raise NotImplementedError
+        else:
+            input_media_is_file = True  #  default is set of photo files in a directory
+            logger.info("FOLDER OF FILE DETECTED %s", file_path)
+
+        # create Photo containers for active photos and discarded ones depending on loading case
+        if input_media_is_file:
+            self.active_photos = PhotoOrderedCollectionByCapturetime()
+            self.active_photos_backup = PhotoOrderedCollectionByCapturetime()
+            self.discarded_photos = PhotoNonOrderedCollection()
+            self.discarded_photos_backup = PhotoNonOrderedCollection()
+        else:  # this is a video
+            self.active_photos = PhotoOrderedCollectionFromVideoRead()
+            self.active_photos_backup = PhotoOrderedCollectionFromVideoRead()
+            self.discarded_photos = PhotoOrderedCollectionFromVideoRead()
+            self.discarded_photos_backup = PhotoOrderedCollectionFromVideoRead()
+
+        self.commit_history = RollBackHeap()
+        self.commit_history_backup = RollBackHeap()
 
         # stop background thread loading pictures in background if still running
         if not self.image_preview_load_completed:
@@ -848,17 +864,25 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.discarded_photos.reset()
         self.commit_history.reset()
 
-        os.chdir(file_path)  # TODO correct bug when file path is a drive (G:\ for instance) where it crashes
-        file_list = os.listdir(file_path)
+        if input_media_is_file:
+            os.chdir(file_path)
+            nb_ticks = 2 * len(os.listdir(file_path))   # 2 tick per file
+        else:  #  this is a video
+            head, tail = os.path.split(file_path)
+            os.chdir(head)
+            cap = cv2.VideoCapture(file_path)
+            nb_ticks = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
+
         self.toggle_progress_bar()  # display_upon_sliderReleased_signal progress bar
-        progress_bar_ticker = StatusProgressBarTicker(2 * len(file_list))  # two stages per file
+        progress_bar_ticker = StatusProgressBarTicker(nb_ticks)  # two stages per file
         QtWidgets.QApplication.processEvents()
 
         logger.info(" START PHOTO META DATA EXTRACTION OF TYPE %s FROM %s", VALID_PHOTO_FILE_SUFFIXES, str(file_path))
         self.ShowImageRadioButton.setChecked(False)
 
-        if self.active_photos.load_metadata_from_files(file_list, VALID_PHOTO_FILE_SUFFIXES, progress_bar_ticker.tick) > 0:
-            self.statusbar_message_qlabel.setText("files from :" + str(file_path))
+        if self.active_photos.load_metadata_from_files(file_path , VALID_PHOTO_FILE_SUFFIXES, progress_bar_ticker.tick) > 0:
+            self.statusbar_message_qlabel.setText("pictures from :" + str(file_path))
             msgbox_txt = "Photos successfully loaded"
         else:  # no picture found restore previous folder
             os.chdir(keep_working_directory)
@@ -890,6 +914,13 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         logger.info(" %s PHOTOS LOADED in PhotoWithMetadata Class ", str(len(self.active_photos)))
 
         return
+
+    def toggle_image_to_be_shown(self):
+
+        if self.ShowImageRadioButton.isChecked():
+            self.my_graph.set_image_to_be_shown()
+        else:
+            self.my_graph.clear_image_to_be_shown()
 
     def upon_background_picture_load_completed(self):
         self.image_preview_load_completed = True
