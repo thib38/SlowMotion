@@ -1251,21 +1251,20 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
     _video_properties = {}
 
     # properties of the video made avlailable by opencv3
-    VIDEO_PROPERTIES = { "CAP_PROP_FRAME_HEIGHT",
-                         "CAP_PROP_FRAME_WIDTH",
-                         "CAP_PROP_FPS",
-                         "CAP_PROP_FRAME_COUNT",
-                         "CAP_PROP_FORMAT",
-                         "CAP_PROP_MODE",
-                         "CAP_PROP_BRIGHTNESS",
-                         "CAP_PROP_CONTRAST",
-                         "CAP_PROP_SATURATION",
-                         "CAP_PROP_HUE",
-                         "CAP_PROP_GAIN",
-                         "CAP_PROP_EXPOSURE",
-                         "CAP_PROP_CONVERT_TO_RGB",
-                         "CAP_PROP_PROP_WHITE_BALANCE",
-                         "CAP_PROP_PROP_RECTIFICATION" }
+    VIDEO_PROPERTIES = {cv2.CAP_PROP_FRAME_HEIGHT,
+                        cv2.CAP_PROP_FRAME_WIDTH,
+                        cv2.CAP_PROP_FPS,
+                        cv2.CAP_PROP_FRAME_COUNT,
+                        cv2.CAP_PROP_FORMAT,
+                        cv2.CAP_PROP_MODE,
+                        cv2.CAP_PROP_BRIGHTNESS,
+                        cv2.CAP_PROP_CONTRAST,
+                        cv2.CAP_PROP_SATURATION,
+                        cv2.CAP_PROP_HUE,
+                        cv2.CAP_PROP_GAIN,
+                        cv2.CAP_PROP_EXPOSURE,
+                        cv2.CAP_PROP_CONVERT_RGB,
+                        cv2.CAP_PROP_TEMPERATURE}
 
 
     def __init__(self):
@@ -1299,17 +1298,22 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         if __debug__:
             logger.info("VIDEO PROPERTIES for %s = %s", str(video_file), str(__class__._video_properties))
 
+        time_ = time.time()
         # load picture
-        for i in range(1, __class__._video_properties["CAP_PROP_FRAME_COUNT"] + 1):  # Frame count starts at 1
+        for i in range(1, __class__._video_properties[cv2.CAP_PROP_FRAME_COUNT] + 1):  # Frame count starts at 1
+
+            ret, frame = cap.read()
 
             # build fake file name made of videofile + file index on 6 digits (can cope with 9 hours 30fps)
             file_name = video_file + "{0:06d}".format(i)   # TODO no suffix so far...tb clarified
-            # build fake medtadata
+            # build fake metadata containing only create date in EXIF format "YYYY:mm:dd HH:MM:SS"
+            metadata = {}
+            csec = cap.get(cv2.CAP_PROP_POS_MSEC) / 10
+            metadata["EXIF:CreateDate"] = str(datetime.datetime.fromtimestamp(csec).strftime('%Y-%m-%d %H:%M:%S'))
 
 
             self.add(Photo(file_, metadata_))
 
-            ret, frame = cap.read()
             if file_treated_tick_function_reference:
                 file_treated_tick_function_reference()  # one tick per file treated if function provided
 
