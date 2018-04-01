@@ -243,9 +243,14 @@ class TreeViewPopulate:
 
     def __init__(self, gui_object):
         self._gui = gui_object  # store QWidget from ModelToViewController class
+        # TODO make this global and no longer hidden in the code - it must be consistent with opencv
+        # TODO capabilities and codecs available
+        filters = ["*" + suffix for suffix in VALID_VIDEO_FILE_SUFFIXES]
         self.model = QFileSystemModel()
         self.model.setRootPath('C:\\')
-        self.model.setFilter(QtCore.QDir.AllDirs | QtCore.QDir.NoDotAndDotDot)
+        self.model.setFilter(QtCore.QDir.AllDirs | QtCore.QDir.NoDotAndDotDot | QtCore.QDir.AllEntries)
+        self.model.setNameFilters(filters)
+        self.model.setNameFilterDisables(False)
         self._gui.treeView.setModel(self.model)
         # remove unnecessary columns size, type and Date modified
         self._gui.treeView.setColumnHidden(1, True)
@@ -826,6 +831,12 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
 
         file_path = self.treeView.model().filePath(signal)
 
+        # detect if this video or directory of image
+        if "." + file_path.split(".")[-1] in VALID_VIDEO_FILE_SUFFIXES:
+            # this is a video
+            logger.info("VIDEO DETECTED %s", file_path)
+            raise NotImplementedError
+
         # stop background thread loading pictures in background if still running
         if not self.image_preview_load_completed:
             self.active_photos.set_stop_background_preview_load_event()
@@ -843,10 +854,10 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         progress_bar_ticker = StatusProgressBarTicker(2 * len(file_list))  # two stages per file
         QtWidgets.QApplication.processEvents()
 
-        logger.info(" START PHOTO META DATA EXTRACTION OF TYPE %s FROM %s", VALID_SUFFIX, str(file_path))
+        logger.info(" START PHOTO META DATA EXTRACTION OF TYPE %s FROM %s", VALID_PHOTO_FILE_SUFFIXES, str(file_path))
         self.ShowImageRadioButton.setChecked(False)
 
-        if self.active_photos.load_metadata_from_files(file_list, VALID_SUFFIX, progress_bar_ticker.tick) > 0:
+        if self.active_photos.load_metadata_from_files(file_list, VALID_PHOTO_FILE_SUFFIXES, progress_bar_ticker.tick) > 0:
             self.statusbar_message_qlabel.setText("files from :" + str(file_path))
             msgbox_txt = "Photos successfully loaded"
         else:  # no picture found restore previous folder
@@ -1542,10 +1553,12 @@ if __name__ == "__main__":
 
     NB_BACKGROUND_PICTURE_LOADING_THREADS = 3
 
-    # global VALID_SUFFIX
-    # VALID_SUFFIX = [".jpg",".NEF",".JPG",".CR2","DNG","RAF","SR2"]
-    # VALID_SUFFIX = [".NEF"]
-    VALID_SUFFIX = [".NEF", ".JPG", ".jpg"]
+    # global VALID_PHOTO_FILE_SUFFIXES
+    # VALID_PHOTO_FILE_SUFFIXES = [".jpg",".NEF",".JPG",".CR2","DNG","RAF","SR2"]
+    # VALID_PHOTO_FILE_SUFFIXES = [".NEF"]
+    VALID_PHOTO_FILE_SUFFIXES = [".NEF", ".JPG", ".jpg"]
+
+    VALID_VIDEO_FILE_SUFFIXES = [".mp4", ".avi"]   # has to be handle properly by opencv3
 
     SCENARIO_FILE_SUFFIX = ".pkl"   # stands for pickle
 
