@@ -138,9 +138,9 @@ class Photo(StoreQPixmap):
 
     def __init__(self, file_name, metadata):
         super().__init__()
-        self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
-
-        # store all existing metadat in the file as return by exiftool
+        # self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
+        self.file_name = file_name    # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
+        # store all existing metadata in the file as return by exiftool
         # Dictionary of tag/values
         self.exif_metadata = metadata
         # compute capture time in numeric time format out of exif string format - avoid to compute multiple times later
@@ -1282,8 +1282,8 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
 
     def __init__(self):
         super().__init__()
-        logger.error("NotImplementedError")
-        raise NotImplementedError
+        # logger.error("NotImplementedError")
+        # raise NotImplementedError
         return
 
     def load_metadata_from_files(self, video_file, file_suffixes_in_scope=None,
@@ -1312,22 +1312,23 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
             logger.info("VIDEO PROPERTIES for %s = %s", str(video_file), str(__class__._video_properties))
 
         time_ = os.stat(video_file).st_ctime  # creation time of the file as timestamp of video
+        head, tail = os.path.split(video_file)  # remove path - keep file name only
         # load picture
-        for i in range(1, __class__._video_properties[cv2.CAP_PROP_FRAME_COUNT] + 1):  # Frame count starts at 1
+        for i in range(1, int(__class__._video_properties[cv2.CAP_PROP_FRAME_COUNT]) + 1):  # Frame count starts at 1
 
             ret, frame = cap.read()  # return a numpy array BGR in frame
 
             # build fake file name made from videofile + file index on 6 digits (can cope with 9 hours 30fps)
-            file_name = "".join(video_file.split(".")[:-1]) + "_{0:06d}".format(i)  # TODO no suffix added..tb clarified
+            file_name = "".join(tail.split(".")[:-1]) + "_{0:06d}".format(i)  # TODO no suffix added..tb clarified
 
             # build fake metadata containing only create date in EXIF format "YYYY:mm:dd HH:MM:SS"
             metadata = {}
             frame_fake_time = time_ + cap.get(cv2.CAP_PROP_POS_MSEC) / 10  # so that frames  have different seconds
             metadata["EXIF:CreateDate"] = \
-                str(datetime.datetime.fromtimestamp(frame_fake_time).strftime('%Y-%m-%d %H:%M:%S'))
+                str(datetime.datetime.fromtimestamp(frame_fake_time).strftime('%Y:%m:%d %H:%M:%S'))
 
             # add photo to collection
-            self.add(PhotoXXX(file_name, metadata))
+            self.add(Photo(file_name, metadata))
 
             # compute and add qpixmap
 
@@ -1337,15 +1338,15 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
                 file_treated_tick_function_reference()  # one tick per file treated if function provided
 
         logger.info(" META DATA LOADED from video_file ")
-
-        # and then creates PhotoWithMetadata class instances and populate container
-        for file_, metadata_ in resultats.items():
-            try:
-                self.add(PhotoWithMetadata(file_, metadata_))
-            except Exception as e:
-                print(exception_to_string(e))
-            if file_treated_tick_function_reference:
-                file_treated_tick_function_reference()  # second tick per file treated if function provided
+        #
+        # # and then creates PhotoWithMetadata class instances and populate container
+        # for file_, metadata_ in resultats.items():
+        #     try:
+        #         self.add(PhotoWithMetadata(file_, metadata_))
+        #     except Exception as e:
+        #         print(exception_to_string(e))
+        #     if file_treated_tick_function_reference:
+        #         file_treated_tick_function_reference()  # second tick per file treated if function provided
 
         return len(self)
 

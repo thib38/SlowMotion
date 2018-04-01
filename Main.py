@@ -824,7 +824,17 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.my_graph.compute_and_display_figure(self.active_photos)
 
     def handle_load_files_from_directory(self, signal):
-
+        """
+        This method is calles when TreeView is double clicked
+        File_path provided can be either a directory or a video file
+        In case it is a directory it is interpreted as a collection of picture to be loaded
+        else treatement for a video is triggered
+        It is based on the same methods being implemented in both
+            - PhotoOrderedCollectionFromVideoRead
+            - PhotoOrderedCollectionByCapturetime
+        :param signal:
+        :return: nothing
+        """
         file_path = self.treeView.model().filePath(signal)
 
         # detect if this video or directory of image
@@ -832,23 +842,30 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
             # this is a video
             logger.info("VIDEO DETECTED %s", file_path)
             input_media_is_file = False
-            logger.error("NotImplementedError")
-            raise NotImplementedError
         else:
             input_media_is_file = True  #  default is set of photo files in a directory
             logger.info("FOLDER OF FILE DETECTED %s", file_path)
 
         # create Photo containers for active photos and discarded ones depending on loading case
+        # set directory and compute number of ticks for progress bar increments
         if input_media_is_file:
             self.active_photos = PhotoOrderedCollectionByCapturetime()
             self.active_photos_backup = PhotoOrderedCollectionByCapturetime()
             self.discarded_photos = PhotoNonOrderedCollection()
             self.discarded_photos_backup = PhotoNonOrderedCollection()
+            os.chdir(file_path)
+            nb_ticks = 2 * len(os.listdir(file_path))  # 2 tick per file
         else:  # this is a video
             self.active_photos = PhotoOrderedCollectionFromVideoRead()
             self.active_photos_backup = PhotoOrderedCollectionFromVideoRead()
             self.discarded_photos = PhotoOrderedCollectionFromVideoRead()
             self.discarded_photos_backup = PhotoOrderedCollectionFromVideoRead()
+            head, tail = os.path.split(file_path)  # remove filename
+            os.chdir(head)
+            # get number of frames in video
+            cap = cv2.VideoCapture(file_path)
+            nb_ticks = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
 
         self.commit_history = RollBackHeap()
         self.commit_history_backup = RollBackHeap()
@@ -863,16 +880,6 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.active_photos.reset()
         self.discarded_photos.reset()
         self.commit_history.reset()
-
-        if input_media_is_file:
-            os.chdir(file_path)
-            nb_ticks = 2 * len(os.listdir(file_path))   # 2 tick per file
-        else:  #  this is a video
-            head, tail = os.path.split(file_path)
-            os.chdir(head)
-            cap = cv2.VideoCapture(file_path)
-            nb_ticks = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            cap.release()
 
         self.toggle_progress_bar()  # display_upon_sliderReleased_signal progress bar
         progress_bar_ticker = StatusProgressBarTicker(nb_ticks)  # two stages per file
