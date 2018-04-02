@@ -246,6 +246,35 @@ class Photo(StoreQPixmap):
 
         return
 
+class PhotoFromVideo(Photo):
+
+    def __init__(self, file_name, metadata):
+        super().__init__(file_name, metadata)
+        if __debug__:
+            logger.debug('PhotoFromVideo Object istanciation started for %s', str(file_name))
+        return
+
+    def get_matplotlib_image_preview(self):
+
+        logger.error("NotImplementedError")
+        raise NotImplementedError
+
+        # problem for selective read is that we do not have the video file name in the photo object
+
+        # return False if binary image preview can't be loaded
+        if not self.get_binary_image_preview():
+            return False
+
+        if not isinstance(self._matplotlib_image_preview, np.ndarray):
+            img_cv2 = __class__._create_opencv_image_from_bytesio(BytesIO(self.get_binary_image_preview()), -1)
+            width, heigth = __class__._matplotlib_image_preview_size
+            image_resized = cv2.resize(img_cv2, (width, heigth),
+                                       interpolation=cv2.INTER_AREA)  # /!\ THIS IS CPU INTENSIVE IF image_cv IS BIG
+            # TODO THIS IS NOT PROTECTING THE ORIGINAL IMAGE RATIO
+            # transform opencv BGR in RGB as supported by Qt images
+            self._matplotlib_image_preview = cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB)
+
+        return self._matplotlib_image_preview
 
 class PhotoWithMetadata(Photo):
     _SUPPORTED_MIME_TYPES = {
@@ -1340,6 +1369,7 @@ class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION
 
 class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
 
+    _video_file_path = None   # store video file path for further reference
     _video_properties = {}
 
     # properties of the video made avlailable by opencv3
@@ -1358,6 +1388,13 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
                         cv2.CAP_PROP_CONVERT_RGB,
                         cv2.CAP_PROP_TEMPERATURE}
 
+    @classmethod
+    def set_video_file_path(cls, file_path):
+        __class__._video_file_path = file_path
+
+    @classmethod
+    def get_video_file_path(cls):
+        return __class__._video_file_path
 
     def __init__(self):
         super().__init__()
@@ -1408,9 +1445,25 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
                 str(datetime.datetime.fromtimestamp(frame_fake_time).strftime('%Y:%m:%d %H:%M:%S'))
 
             # add photo to collection
-            self.add(Photo(file_name, metadata))
+            self.add(PhotoFromVideo(file_name, metadata))
+
+            # compute and store matplotlib
+            img_cv2 = __class__._create_opencv_image_from_bytesio(BytesIO(self.get_binary_image_preview()), -1)
+            width, heigth = __class__._matplotlib_image_preview_size
+            image_resized = cv2.resize(img_cv2, (width, heigth),
+                                       interpolation=cv2.INTER_AREA)  # /!\ THIS IS CPU INTENSIVE IF image_cv IS BIG
+            # TODO THIS IS NOT PROTECTING THE ORIGINAL IMAGE RATIO
+            # transform opencv BGR in RGB as supported by Qt images
+            self._matplotlib_image_preview = cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB)
 
             # compute and add qpixmap
+            """
+            Better to do it at metadata loading time rather than later because full image is already
+            loaded in memory 
+            Investigate if it can be threaded ? probably not as this is based on a sequential reading
+            of a unique file - or it requires to create files on disk at metadta loading time nd then
+            to read them in // later with same approach than genuine pictures
+            """
 
             # store full size image ? or not as it can be accessed directly
 

@@ -842,6 +842,8 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
             # this is a video
             logger.info("VIDEO DETECTED %s", file_path)
             input_media_is_file = False
+            # store video file path in PhotoOrderedCollectionFromVideoRead class attribute
+            PhotoOrderedCollectionFromVideoRead.set_video_file_path(file_path)
         else:
             input_media_is_file = True  #  default is set of photo files in a directory
             logger.info("FOLDER OF FILE DETECTED %s", file_path)
@@ -1558,6 +1560,21 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         sys.exit(app.exec_())  # TODO wort out why it exits with return code -1 whereas clik on window bar is 0
 
 
+def handle_uncaugth_exception(*exc_info):
+    """
+    This function will be subsituted to sys.except_hook standard function that is raised when ecxeptions are raised and
+    not caugth by some try: except: block
+    :param exc_info: (exc_type, exc_value, exc_traceback)
+    :return: stop program with return code 1
+    """
+    stack = traceback.extract_stack()[:-3] + traceback.extract_tb(exc_info[1].__traceback__)  # add limit=??
+    pretty = traceback.format_list(stack)
+    text = ''.join(pretty) + '\n  {} {}'.format(exc_info[1].__class__, exc_info[1])
+    # text = "".join(traceback.format_exception(*exc_info))
+    logger.error("Unhandled exception: %s", text)
+    sys.exit(1)
+
+
 def exception_to_string(excp):
     stack = traceback.extract_stack()[:-3] + traceback.extract_tb(excp.__traceback__)  # add limit=??
     pretty = traceback.format_list(stack)
@@ -1589,6 +1606,8 @@ if __name__ == "__main__":
     logger.setLevel(logging.DEBUG)  # A D A P T   LOGGING LEVEL        H E R E
     logger.addHandler(handler_file)
     logger.addHandler(handler_console)
+
+    sys.excepthook = handle_uncaugth_exception  # reassign so that log is fed with problem
 
     VERSION = "V0.9.1"
     PROGRAM_NAME = "PHOTO INTERVAL MANAGER"
@@ -1622,6 +1641,8 @@ if __name__ == "__main__":
     logger.info('=========  ' + PROGRAM_NAME + ' ' + VERSION + ' STARTED ===========')
     logger.info("TAGS TREATED =\n" + str(TAG_DICTIONNARY))
 
+
+
     # TODO <<< DO NOT CHANGE ORDER OF TAG AS MyTableModel is relying on their position >>> TO BE FIXED LATER
     # TODO    IN PARTICULAR CreateDate TO BE IN LAST POSITION
     # TODO find a way to not depend on CreateDate position in the list
@@ -1631,8 +1652,11 @@ if __name__ == "__main__":
     # TODO put a lock on ui.active_photos that prevent adding photos until backgroung task is completed OR that
     # TODO impleemnts an approach whereby the background thread is stopped and restarted with fresh data
 
-    app = QtWidgets.QApplication(sys.argv)
-    ui = ModelToViewController()
-    ui.show()
 
-    sys.exit(app.exec_())
+    try:
+        app = QtWidgets.QApplication(sys.argv)
+        ui = ModelToViewController()
+        ui.show()
+        sys.exit(app.exec_())
+    except Exception:
+        logger.exception("Exception caugth:")
