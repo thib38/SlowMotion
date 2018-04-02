@@ -355,10 +355,10 @@ class MyTableModel(QAbstractTableModel):
                 return QVariant(QColor(Qt.black))
         elif role == Qt.FontRole:
             font = QFont()
-            if isinstance(self.photo_container[index.row()], PhotoWithMetadata):
+            if isinstance(self.photo_container[index.row()], Photo):
                 font.setWeight(QFont.DemiBold)
                 return QVariant(font)
-            else:
+            else:  # PhotoClone in Italic
                 font.setItalic(True)
                 return QVariant(font)
         elif role != Qt.DisplayRole:
@@ -901,12 +901,12 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
 
         # load compute and display_upon_sliderReleased_signal PhotoWithMetadata details, Summary and Graph of Intervals
         self.myTable = ShowTableView(self, self.active_photos)
+        self.my_list = ShowSummary(self.listView, self.active_photos)
+        self.my_graph.compute_and_display_figure(self.active_photos)
         if __debug__:
-            logger.debug("TableView Displayed")
+            logger.debug("ShowSummary Displayed")
 
         if input_media_is_file:
-            self.my_list = ShowSummary(self.listView, self.active_photos)
-            self.my_graph.compute_and_display_figure(self.active_photos)
             self.my_slider.display_by_row(0)
             self.my_slider.set_cursor(0)
 

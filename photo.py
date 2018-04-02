@@ -1150,6 +1150,63 @@ class PhotoCollection:
 
         return self._photo_collection.index(photo_to_be_inserted)
 
+    def interval_with_previous(self, photo):
+        if len(self._photo_collection) == 0:
+            raise LookupError  # TODO check if i can invent an exception or it needs to be declared in some ways
+        try:
+            index_ = self._photo_collection.index(photo)
+            if index_ == 0:
+                return 0
+            else:
+                return self._photo_collection[index_].shot_timestamp - self._photo_collection[index_ - 1].shot_timestamp
+        except LookupError as Err:
+            logger.error("%s \n %s not in PhotoCollection", Err, photo)
+            raise ValueError
+
+    def interval_with_next(self, photo):
+        if len(self._photo_collection) == 0:
+            raise LookupError  # TODO check if i can invent an exception or it needs to be declared in some ways
+        try:
+            index_ = self._photo_collection.index(photo)
+            if index_ == len(self._photo_collection) - 1:
+                return 0
+            else:
+                return self._photo_collection[index_ + 1].shot_timestamp - self._photo_collection[index_].shot_timestamp
+        except LookupError as Err:
+            logger.error("%s \n %s not in PhotoCollection", Err, photo)
+            raise ValueError
+
+    def compute_statistics_interval_with_previous(self):
+
+        _StatDict = {}
+        interval_list = [self.interval_with_previous(foto) for foto in self._photo_collection]
+        _StatDict["NbShots"] = len(interval_list)
+        if len(interval_list) <= 1:
+            _StatDict["mean"] = 0
+            _StatDict["median"] = 0
+            _StatDict["mode"] = 0
+            _StatDict["Standard Deviation"] = 0
+            _StatDict["Duration 24fps"] = 0
+            _StatDict["Duration 30fps"] = 0
+            _StatDict["Duration 60fps"] = 0
+        else:
+            interval_list = interval_list[
+                            1:]  # remove 1st element with interval=0 because having no predecessor
+            _StatDict["mean"] = statistics.mean(interval_list)
+            _StatDict["median"] = statistics.median(interval_list)
+            try:
+                _StatDict["mode"] = statistics.mode(interval_list)
+            # in case there are 2 values in interval_list mode can't be found and returns an error that we catch
+            except StatisticsError:
+                _StatDict["mode"] = " NA "
+
+            _StatDict["Standard Deviation"] = statistics.pstdev(interval_list)
+            _StatDict["Duration 24fps"] = _StatDict["NbShots"] / 24
+            _StatDict["Duration 30fps"] = _StatDict["NbShots"] / 30
+            _StatDict["Duration 60fps"] = _StatDict["NbShots"] / 60
+
+        return _StatDict
+
     def set_stop_background_preview_load_event(self):
         self._stop_background_preview_load_event.set()
 
@@ -1264,6 +1321,7 @@ class PhotoCollection:
 
         return None
 
+
 class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION IS NOT NEEDED - PARENT ONE CAN DO
     '''
     Collection of non ordered PhotoWithMetadata
@@ -1335,8 +1393,8 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         time_ = os.stat(video_file).st_ctime  # creation time of the file as timestamp of video
         head, tail = os.path.split(video_file)  # remove path - keep file name only
         # load picture
-        # for i in range(1, int(__class__._video_properties[cv2.CAP_PROP_FRAME_COUNT]) + 1):  # Frame count starts at 1
-        for i in range(1, 3):  # Frame count starts at 1
+        for i in range(1, int(__class__._video_properties[cv2.CAP_PROP_FRAME_COUNT]) + 1):  # Frame count starts at 1
+        # for i in range(1, 3):  # Frame count starts at 1
 
             ret, frame = cap.read()  # return a numpy array BGR in frame
 
@@ -1344,7 +1402,7 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
             file_name = "".join(tail.split(".")[:-1]) + "_{0:06d}".format(i)  # TODO no suffix added..tb clarified
             # build fake metadata containing SourceFile and create date in EXIF format "YYYY:mm:dd HH:MM:SS"
             metadata = {}
-            metadata["EXIF:SourceFile"] = file_name
+            metadata["SourceFile"] = file_name
             frame_fake_time = time_ + cap.get(cv2.CAP_PROP_POS_MSEC) / 10  # so that frames  have different seconds
             metadata["EXIF:CreateDate"] = \
                 str(datetime.datetime.fromtimestamp(frame_fake_time).strftime('%Y:%m:%d %H:%M:%S'))
@@ -1358,6 +1416,9 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
 
             if file_treated_tick_function_reference:
                 file_treated_tick_function_reference()  # one tick per file treated if function provided
+
+        # release opencv videoreader
+        cap.release()
 
         logger.info(" META DATA LOADED from video_file ")
         #
@@ -1651,63 +1712,36 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
 
         return len(self)
 
-
-    def interval_with_previous(self, photo):
-        if len(self._photo_collection) == 0:
-            raise LookupError  # TODO check if i can invent an exception or it needs to be declared in some ways
-        try:
-            index_ = self._photo_collection.index(photo)
-            if index_ == 0:
-                return 0
-            else:
-                return self._photo_collection[index_].shot_timestamp - self._photo_collection[index_ - 1].shot_timestamp
-        except LookupError as Err:
-            logger.error("%s \n %s not in PhotoCollection", Err, photo)
-            raise ValueError
-
-    def interval_with_next(self, photo):
-        if len(self._photo_collection) == 0:
-            raise LookupError  # TODO check if i can invent an exception or it needs to be declared in some ways
-        try:
-            index_ = self._photo_collection.index(photo)
-            if index_ == len(self._photo_collection) - 1:
-                return 0
-            else:
-                return self._photo_collection[index_ + 1].shot_timestamp - self._photo_collection[index_].shot_timestamp
-        except LookupError as Err:
-            logger.error("%s \n %s not in PhotoCollection", Err, photo)
-            raise ValueError
-
-    def compute_statistics_interval_with_previous(self):
-
-        _StatDict = {}
-        interval_list = [self.interval_with_previous(foto) for foto in self._photo_collection]
-        _StatDict["NbShots"] = len(interval_list)
-        if len(interval_list) <= 1:
-            _StatDict["mean"] = 0
-            _StatDict["median"] = 0
-            _StatDict["mode"] = 0
-            _StatDict["Standard Deviation"] = 0
-            _StatDict["Duration 24fps"] = 0
-            _StatDict["Duration 30fps"] = 0
-            _StatDict["Duration 60fps"] = 0
-        else:
-            interval_list = interval_list[
-                            1:]  # remove 1st element with interval=0 because having no predecessor
-            _StatDict["mean"] = statistics.mean(interval_list)
-            _StatDict["median"] = statistics.median(interval_list)
-            try:
-                _StatDict["mode"] = statistics.mode(interval_list)
-            # in case there are 2 values in interval_list mode can't be found and returns an error that we catch
-            except StatisticsError:
-                _StatDict["mode"] = " NA "
-
-            _StatDict["Standard Deviation"] = statistics.pstdev(interval_list)
-            _StatDict["Duration 24fps"] = _StatDict["NbShots"] / 24
-            _StatDict["Duration 30fps"] = _StatDict["NbShots"] / 30
-            _StatDict["Duration 60fps"] = _StatDict["NbShots"] / 60
-
-        return _StatDict
+    # def compute_statistics_interval_with_previous(self):
+    #
+    #     _StatDict = {}
+    #     interval_list = [self.interval_with_previous(foto) for foto in self._photo_collection]
+    #     _StatDict["NbShots"] = len(interval_list)
+    #     if len(interval_list) <= 1:
+    #         _StatDict["mean"] = 0
+    #         _StatDict["median"] = 0
+    #         _StatDict["mode"] = 0
+    #         _StatDict["Standard Deviation"] = 0
+    #         _StatDict["Duration 24fps"] = 0
+    #         _StatDict["Duration 30fps"] = 0
+    #         _StatDict["Duration 60fps"] = 0
+    #     else:
+    #         interval_list = interval_list[
+    #                         1:]  # remove 1st element with interval=0 because having no predecessor
+    #         _StatDict["mean"] = statistics.mean(interval_list)
+    #         _StatDict["median"] = statistics.median(interval_list)
+    #         try:
+    #             _StatDict["mode"] = statistics.mode(interval_list)
+    #         # in case there are 2 values in interval_list mode can't be found and returns an error that we catch
+    #         except StatisticsError:
+    #             _StatDict["mode"] = " NA "
+    #
+    #         _StatDict["Standard Deviation"] = statistics.pstdev(interval_list)
+    #         _StatDict["Duration 24fps"] = _StatDict["NbShots"] / 24
+    #         _StatDict["Duration 30fps"] = _StatDict["NbShots"] / 30
+    #         _StatDict["Duration 60fps"] = _StatDict["NbShots"] / 60
+    #
+    #     return _StatDict
 
     def duplicate_photo(self, row, duplicate_method):
         picture = self._photo_collection[row]
