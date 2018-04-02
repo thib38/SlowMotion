@@ -270,12 +270,12 @@ class ShowTableView:
 
     def __init__(self, guiObject, PhotoList):
         self._gui = guiObject  # store QWidget from ModelToViewController class
-         # __class__.list_of_lists = build_list_of_list(PhotoList)  # Build lists required to display_upon_sliderReleased_signal
+        # __class__.list_of_lists = build_list_of_list(PhotoList)  # Build lists required to display_upon_sliderReleased_signal
         # for title in TAG_DICTIONNARY.keys():
         #     __class__.title_of_lists.append(title)
         # __class__.title_of_lists.append(" Interval (secs) ")
         self.tm = MyTableModel(ui.active_photos, TAG_DICTIONNARY)
-        self._gui.tableView.setModel(self.tm)
+        self._gui.tableView.setModel(self.tm)                          # TODO CA PLANTE ICI /!\
         header = self._gui.tableView.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)  # have columns width adjusted to content
         self._gui.tableView.selectionModel().selectionChanged.connect(self.handle_selection_changed)
@@ -896,29 +896,40 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
             self._restore_context()
             msgbox_txt = "No elligible file found in {}\nprevious folder remain loaded".format(str(file_path))
 
+        if __debug__:
+            logger.debug("PHOTO LOADED ABOUT TO START TableView Display")
+
         # load compute and display_upon_sliderReleased_signal PhotoWithMetadata details, Summary and Graph of Intervals
         self.myTable = ShowTableView(self, self.active_photos)
-        self.my_list = ShowSummary(self.listView, self.active_photos)
-        self.my_graph.compute_and_display_figure(self.active_photos)
-        self.my_slider.display_by_row(0)
-        self.my_slider.set_cursor(0)
+        if __debug__:
+            logger.debug("TableView Displayed")
 
-        # start or restart background threads that will load pictures in memory in background
-        self.toggle_progress_bar()  # close progress bar
-        self.status_message_preserved = self.statusbar_message_qlabel.text()
-        self.statusbar_message_qlabel.setText("loading image previews...")
-        progress_bar_ticker = StatusProgressBarTicker(len(self.active_photos))
-        self.image_preview_load_completed = False
-        self.thread_list = self.active_photos.launch_background_picture_loader_threads(
-            progress_bar_ticker.tick,
-            self.BackgroundPictureLoadCompleted.emit
-        )
+        if input_media_is_file:
+            self.my_list = ShowSummary(self.listView, self.active_photos)
+            self.my_graph.compute_and_display_figure(self.active_photos)
+            self.my_slider.display_by_row(0)
+            self.my_slider.set_cursor(0)
+
+            # start or restart background threads that will load pictures in memory in background
+            self.toggle_progress_bar()  # close progress bar
+            self.status_message_preserved = self.statusbar_message_qlabel.text()
+            self.statusbar_message_qlabel.setText("loading image previews...")
+            progress_bar_ticker = StatusProgressBarTicker(len(self.active_photos))
+            self.image_preview_load_completed = False
+            self.thread_list = self.active_photos.launch_background_picture_loader_threads(
+                progress_bar_ticker.tick,
+                self.BackgroundPictureLoadCompleted.emit
+            )
+        else:
+            pass
+            # logger.error("NotImplementedError")
+            # raise NotImplementedError
 
         # inform about status of load
         QMessageBox.about(self, PROGRAM_NAME, msgbox_txt)
         logger.info(" %s PHOTOS LOADED in Photo Class ", str(len(self.active_photos)))
         self.toggle_progress_bar()  # close progress bar
-        logger.info(" %s PHOTOS LOADED in PhotoWithMetadata Class ", str(len(self.active_photos)))
+        logger.info(" %s PHOTOS LOADED in Photoxxxx Class ", str(len(self.active_photos)))
 
         return
 
@@ -1575,7 +1586,7 @@ if __name__ == "__main__":
     handler_console.setLevel(logging.DEBUG)
 
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)  # A D A P T   LOGGING LEVEL        H E R E
+    logger.setLevel(logging.DEBUG)  # A D A P T   LOGGING LEVEL        H E R E
     logger.addHandler(handler_file)
     logger.addHandler(handler_console)
 

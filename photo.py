@@ -152,6 +152,10 @@ class Photo(StoreQPixmap):
         # store reference to the CloneSet for clone picture preceeding this picture
         self.clone_set_with_previous = None
 
+    @property
+    def shot_timestamp(self):
+        return self._shot_time
+
     def get_matplotlib_image_preview(self):
         logger.error("NotImplementedError")
         raise NotImplementedError
@@ -310,13 +314,9 @@ class PhotoWithMetadata(Photo):
         # TODO implement some minimal check that mandatory tags are presents else fail - how to fail an __init__ ?
         return
 
-    @property
-    def shot_timestamp(self):
-        return self._shot_time
-
-    def set_shot_timestamp(self,
-                           shot_time):  # TODO NOT USED MIGHT BE REMOVED as timestamp for real photos should not change
-        self._shot_time = shot_time
+    # def set_shot_timestamp(self,
+    #                        shot_time):  # TODO NOT USED MIGHT BE REMOVED as timestamp for real photos should not change
+    #     self._shot_time = shot_time
 
     def get_binary_image_preview(self):
         """
@@ -1125,9 +1125,30 @@ class PhotoCollection:
         self._photo_collection = []
         return True
 
+    # def add(self, photo_to_be_inserted, index=None):
+    #     logger.error("NotImplementedError")
+    #     raise NotImplementedError
     def add(self, photo_to_be_inserted, index=None):
-        logger.error("NotImplementedError")
-        raise NotImplementedError
+        if len(self._photo_collection) == 0:  # first element
+            self._photo_collection.append(photo_to_be_inserted)
+        # "younger" picture inserted @ first position
+        elif photo_to_be_inserted.shot_timestamp <= self._photo_collection[0].shot_timestamp:
+            self._photo_collection.insert(0, photo_to_be_inserted)
+        # "older" picture appended @ last position
+        elif photo_to_be_inserted.shot_timestamp >= self._photo_collection[-1].shot_timestamp:
+            self._photo_collection.append(photo_to_be_inserted)
+        else:
+            for i in range(1, len(self._photo_collection)):
+                if self._photo_collection[i - 1].shot_timestamp \
+                        < photo_to_be_inserted.shot_timestamp \
+                        <= self._photo_collection[i].shot_timestamp:
+                    self._photo_collection.insert(i, photo_to_be_inserted)
+                    break
+
+        if not self._update_background_preview_load_event.is_set():
+            self._update_background_preview_load_event.set()
+
+        return self._photo_collection.index(photo_to_be_inserted)
 
     def set_stop_background_preview_load_event(self):
         self._stop_background_preview_load_event.set()
@@ -1314,15 +1335,16 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         time_ = os.stat(video_file).st_ctime  # creation time of the file as timestamp of video
         head, tail = os.path.split(video_file)  # remove path - keep file name only
         # load picture
-        for i in range(1, int(__class__._video_properties[cv2.CAP_PROP_FRAME_COUNT]) + 1):  # Frame count starts at 1
+        # for i in range(1, int(__class__._video_properties[cv2.CAP_PROP_FRAME_COUNT]) + 1):  # Frame count starts at 1
+        for i in range(1, 3):  # Frame count starts at 1
 
             ret, frame = cap.read()  # return a numpy array BGR in frame
 
             # build fake file name made from videofile + file index on 6 digits (can cope with 9 hours 30fps)
             file_name = "".join(tail.split(".")[:-1]) + "_{0:06d}".format(i)  # TODO no suffix added..tb clarified
-
-            # build fake metadata containing only create date in EXIF format "YYYY:mm:dd HH:MM:SS"
+            # build fake metadata containing SourceFile and create date in EXIF format "YYYY:mm:dd HH:MM:SS"
             metadata = {}
+            metadata["EXIF:SourceFile"] = file_name
             frame_fake_time = time_ + cap.get(cv2.CAP_PROP_POS_MSEC) / 10  # so that frames  have different seconds
             metadata["EXIF:CreateDate"] = \
                 str(datetime.datetime.fromtimestamp(frame_fake_time).strftime('%Y:%m:%d %H:%M:%S'))
@@ -1629,27 +1651,6 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
 
         return len(self)
 
-    def add(self, photo_to_be_inserted, index=None):
-        if len(self._photo_collection) == 0:  # first element
-            self._photo_collection.append(photo_to_be_inserted)
-        # "younger" picture inserted @ first position
-        elif photo_to_be_inserted.shot_timestamp <= self._photo_collection[0].shot_timestamp:
-            self._photo_collection.insert(0, photo_to_be_inserted)
-        # "older" picture appended @ last position
-        elif photo_to_be_inserted.shot_timestamp >= self._photo_collection[-1].shot_timestamp:
-            self._photo_collection.append(photo_to_be_inserted)
-        else:
-            for i in range(1, len(self._photo_collection)):
-                if self._photo_collection[i - 1].shot_timestamp \
-                        < photo_to_be_inserted.shot_timestamp \
-                        <= self._photo_collection[i].shot_timestamp:
-                    self._photo_collection.insert(i, photo_to_be_inserted)
-                    break
-
-        if not self._update_background_preview_load_event.is_set():
-            self._update_background_preview_load_event.set()
-
-        return self._photo_collection.index(photo_to_be_inserted)
 
     def interval_with_previous(self, photo):
         if len(self._photo_collection) == 0:
