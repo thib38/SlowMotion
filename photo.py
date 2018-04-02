@@ -41,7 +41,7 @@ handler_file.setLevel(logging.DEBUG)
 handler_console.setLevel(logging.DEBUG)
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # A D A P T   LOGGING LEVEL        H E R E
+logger.setLevel(logging.DEBUG)  # A D A P T   LOGGING LEVEL        H E R E
 logger.addHandler(handler_file)
 logger.addHandler(handler_console)
 
@@ -246,35 +246,35 @@ class Photo(StoreQPixmap):
 
         return
 
+
 class PhotoFromVideo(Photo):
 
-    def __init__(self, file_name, metadata):
+    def __init__(self, file_name, metadata, video_file_path, index_in_video):
         super().__init__(file_name, metadata)
+        self._video_file_path = video_file_path
+        self._index_in_video = index_in_video
+
         if __debug__:
-            logger.debug('PhotoFromVideo Object istanciation started for %s', str(file_name))
+            logger.debug('PhotoFromVideo Object istanciation done for %s at index %s',
+                         str(file_name), str(index_in_video))
         return
 
     def get_matplotlib_image_preview(self):
 
-        logger.error("NotImplementedError")
-        raise NotImplementedError
-
-        # problem for selective read is that we do not have the video file name in the photo object
-
-        # return False if binary image preview can't be loaded
-        if not self.get_binary_image_preview():
-            return False
-
         if not isinstance(self._matplotlib_image_preview, np.ndarray):
-            img_cv2 = __class__._create_opencv_image_from_bytesio(BytesIO(self.get_binary_image_preview()), -1)
+            cap = cv2.VideoCapture(self._video_file_path)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, self._index_in_video)
+            ret, frame = cap.read()
+            cap.release()
             width, heigth = __class__._matplotlib_image_preview_size
-            image_resized = cv2.resize(img_cv2, (width, heigth),
+            image_resized = cv2.resize(frame, (width, heigth),
                                        interpolation=cv2.INTER_AREA)  # /!\ THIS IS CPU INTENSIVE IF image_cv IS BIG
             # TODO THIS IS NOT PROTECTING THE ORIGINAL IMAGE RATIO
             # transform opencv BGR in RGB as supported by Qt images
             self._matplotlib_image_preview = cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB)
 
         return self._matplotlib_image_preview
+
 
 class PhotoWithMetadata(Photo):
     _SUPPORTED_MIME_TYPES = {
@@ -1277,78 +1277,7 @@ class PhotoCollection:
     def launch_background_picture_loader_threads(self,
                                                  progress_bar_ticker_function_reference=False,
                                                  load_completed_signal_emit_function_reference=False):
-        logger.info(" IMAGE PREVIEW BACKGROUND LOADING STARTED")
-        thread_list = []
-        for index_ in range(__class__._nb_of_background_picture_loading_threads):
-            t = threading.Thread(target=self._load_active_photos_preview_pictures_in_memory,
-                                 args=(self._stop_background_preview_load_event,
-                                       self._update_background_preview_load_event,
-                                       self._update_background_barrier,
-                                       index_,
-                                       __class__._nb_of_background_picture_loading_threads,
-                                       progress_bar_ticker_function_reference,
-                                       load_completed_signal_emit_function_reference)
-                                 )
-            t.daemon = True
-            t.start()
-            thread_list.append(t)
-        return thread_list
-
-    def _load_active_photos_preview_pictures_in_memory(self,
-                                                       stop_event,
-                                                       update_event,
-                                                       barrier,
-                                                       index_,
-                                                       step,
-                                                       progress_bar_ticker_function_reference,
-                                                       load_completed_signal_emit_function_reference):
-        """
-        This function is to be used in // threads. It loads preview images of the ui.active_photos list.
-        Each tasks loads the images of "index_" rank  within a slot of p image
-        For example index_ = 2 with step = 4 will load picture at rank 2,6,10,14,18,..
-
-        :param stop_event: event signaling that loading has to be stopped because loading of another bunch of
-                           picture has been requested via the interface
-        :param update_event:  event signaling that image have been added or removed in the ui.active_photos list. Upon
-                              this event tasks stop processing and reloads the ui.active_photos list so that they do not
-                              fail by requesting no longer valid indexes in the list
-        :param barrier:  threading  barrier used to wait that all thread reaches a consistent step
-        :param index_: index of the picture to be treated within the modulo p
-        :param step: p is the modulo that distribute the load between threads. For every slot of P image, thread one
-                     deals with images 1, p+1, 2p+1, 3p+1,...
-        :return: None or 255 if interrupted
-        """
-        # global ui  # required as called in a separate thread
-        keep_going = True
-        while keep_going:
-            keep_going = False
-            update_event.clear()
-            for i in range(0, len(self._photo_collection), step):
-                if stop_event.is_set():
-                    rc = barrier.wait()
-                    if rc == 0:
-                        stop_event.clear()
-                        logger.info(" IMAGE PREVIEW BACKGROUND LOADING CANCELLED")
-                    return 255
-                if update_event.is_set():
-                    rc = barrier.wait()  # wait all thread received the event before clearing it
-                    if rc == 0:
-                        logger.info(" IMAGE PREVIEW BACKGROUND LOADING RESET")
-                    update_event.clear()
-                    keep_going = True
-                    break
-                pos = i + index_
-                if pos <= len(self._photo_collection) - 1:
-                    self.load_image_previews_in_memory(pos)
-                    if progress_bar_ticker_function_reference:
-                        progress_bar_ticker_function_reference()
-        rc = barrier.wait()  # wait all tasks to complete
-        if rc == 0:
-            if load_completed_signal_emit_function_reference:
-                load_completed_signal_emit_function_reference()
-            logger.info(" IMAGE PREVIEW BACKGROUND LOADING COMPLETED")
-
-        return None
+        raise NotImplementedError
 
 
 class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION IS NOT NEEDED - PARENT ONE CAN DO
@@ -1427,34 +1356,36 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         if __debug__:
             logger.info("VIDEO PROPERTIES for %s = %s", str(video_file), str(__class__._video_properties))
 
-        time_ = os.stat(video_file).st_ctime  # creation time of the file as timestamp of video
+        # time_ = os.stat(video_file).st_ctime  # creation time of the file as timestamp of video
+        frame_fake_time = os.stat(video_file).st_ctime  # creation time of the file as timestamp of video
         head, tail = os.path.split(video_file)  # remove path - keep file name only
         # load picture
-        for i in range(1, int(__class__._video_properties[cv2.CAP_PROP_FRAME_COUNT]) + 1):  # Frame count starts at 1
-        # for i in range(1, 3):  # Frame count starts at 1
+        for i in range(int(__class__._video_properties[cv2.CAP_PROP_FRAME_COUNT])):
+        # for i in range(1, 100):  # Frame count starts at 1
 
-            ret, frame = cap.read()  # return a numpy array BGR in frame
+            # ret, frame = cap.read()  # return a numpy array BGR in frame  - actuelly no need to read
 
             # build fake file name made from videofile + file index on 6 digits (can cope with 9 hours 30fps)
             file_name = "".join(tail.split(".")[:-1]) + "_{0:06d}".format(i)  # TODO no suffix added..tb clarified
             # build fake metadata containing SourceFile and create date in EXIF format "YYYY:mm:dd HH:MM:SS"
             metadata = {}
             metadata["SourceFile"] = file_name
-            frame_fake_time = time_ + cap.get(cv2.CAP_PROP_POS_MSEC) / 10  # so that frames  have different seconds
+            # frame_fake_time = time_ + cap.get(cv2.CAP_PROP_POS_MSEC) / 10  # so that frames  have different seconds
+            frame_fake_time += 1  # so that frames  have different seconds
             metadata["EXIF:CreateDate"] = \
                 str(datetime.datetime.fromtimestamp(frame_fake_time).strftime('%Y:%m:%d %H:%M:%S'))
 
             # add photo to collection
-            self.add(PhotoFromVideo(file_name, metadata))
+            self.add(PhotoFromVideo(file_name, metadata, video_file, i))
 
-            # compute and store matplotlib
-            img_cv2 = __class__._create_opencv_image_from_bytesio(BytesIO(self.get_binary_image_preview()), -1)
-            width, heigth = __class__._matplotlib_image_preview_size
-            image_resized = cv2.resize(img_cv2, (width, heigth),
-                                       interpolation=cv2.INTER_AREA)  # /!\ THIS IS CPU INTENSIVE IF image_cv IS BIG
-            # TODO THIS IS NOT PROTECTING THE ORIGINAL IMAGE RATIO
-            # transform opencv BGR in RGB as supported by Qt images
-            self._matplotlib_image_preview = cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB)
+            # # compute and store matplotlib
+            # width, heigth = Photo._matplotlib_image_preview_size
+            # image_resized = cv2.resize(frame, (width, heigth),
+            #                            interpolation=cv2.INTER_AREA)  # /!\ THIS IS CPU INTENSIVE IF image_cv IS BIG
+            # # TODO THIS IS NOT PROTECTING THE ORIGINAL IMAGE RATIO
+            # # transform opencv BGR in RGB as supported by Qt images
+            # matplotlib_image = cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB)
+
 
             # compute and add qpixmap
             """
@@ -1485,6 +1416,26 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         #         file_treated_tick_function_reference()  # second tick per file treated if function provided
 
         return len(self)
+
+    def launch_background_picture_loader_threads(self,
+                                                 progress_bar_ticker_function_reference=False,
+                                                 load_completed_signal_emit_function_reference=False):
+        """
+                First implementation is probably dead slow as matplotlib reopen the VideoCapture for every frame
+                :param progress_bar_ticker_function_reference:
+                :param load_completed_signal_emit_function_reference:
+                :return:
+                """
+        for i, picture in enumerate(self._photo_collection):
+            picture.get_matplotlib_image_preview()
+            logger.info("frame nb %s loaded", str(i))
+            if progress_bar_ticker_function_reference:
+                progress_bar_ticker_function_reference()
+
+        if load_completed_signal_emit_function_reference:
+            load_completed_signal_emit_function_reference()
+
+        return None
 
 
 class PhotoOrderedCollectionByCapturetime(PhotoCollection):
@@ -1765,36 +1716,82 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
 
         return len(self)
 
-    # def compute_statistics_interval_with_previous(self):
-    #
-    #     _StatDict = {}
-    #     interval_list = [self.interval_with_previous(foto) for foto in self._photo_collection]
-    #     _StatDict["NbShots"] = len(interval_list)
-    #     if len(interval_list) <= 1:
-    #         _StatDict["mean"] = 0
-    #         _StatDict["median"] = 0
-    #         _StatDict["mode"] = 0
-    #         _StatDict["Standard Deviation"] = 0
-    #         _StatDict["Duration 24fps"] = 0
-    #         _StatDict["Duration 30fps"] = 0
-    #         _StatDict["Duration 60fps"] = 0
-    #     else:
-    #         interval_list = interval_list[
-    #                         1:]  # remove 1st element with interval=0 because having no predecessor
-    #         _StatDict["mean"] = statistics.mean(interval_list)
-    #         _StatDict["median"] = statistics.median(interval_list)
-    #         try:
-    #             _StatDict["mode"] = statistics.mode(interval_list)
-    #         # in case there are 2 values in interval_list mode can't be found and returns an error that we catch
-    #         except StatisticsError:
-    #             _StatDict["mode"] = " NA "
-    #
-    #         _StatDict["Standard Deviation"] = statistics.pstdev(interval_list)
-    #         _StatDict["Duration 24fps"] = _StatDict["NbShots"] / 24
-    #         _StatDict["Duration 30fps"] = _StatDict["NbShots"] / 30
-    #         _StatDict["Duration 60fps"] = _StatDict["NbShots"] / 60
-    #
-    #     return _StatDict
+    def launch_background_picture_loader_threads(self,
+                                                 progress_bar_ticker_function_reference=False,
+                                                 load_completed_signal_emit_function_reference=False):
+        logger.info(" IMAGE PREVIEW BACKGROUND LOADING STARTED")
+        thread_list = []
+        for index_ in range(__class__._nb_of_background_picture_loading_threads):
+            t = threading.Thread(target=self._load_active_photos_preview_pictures_in_memory,
+                                 args=( self._stop_background_preview_load_event,
+                                       self._update_background_preview_load_event,
+                                       self._update_background_barrier,
+                                       index_,
+                                       __class__._nb_of_background_picture_loading_threads,
+                                       progress_bar_ticker_function_reference,
+                                       load_completed_signal_emit_function_reference)
+                                 )
+            t.daemon = True
+            t.start()
+            thread_list.append(t)
+        return thread_list
+
+    def _load_active_photos_preview_pictures_in_memory(self,
+                                                       stop_event,
+                                                       update_event,
+                                                       barrier,
+                                                       index_,
+                                                       step,
+                                                       progress_bar_ticker_function_reference,
+                                                       load_completed_signal_emit_function_reference):
+        """
+        This function is to be used in // threads. It loads preview images of the ui.active_photos list.
+        Each tasks loads the images of "index_" rank  within a slot of p image
+        For example index_ = 2 with step = 4 will load picture at rank 2,6,10,14,18,..
+
+        :param stop_event: event signaling that loading has to be stopped because loading of another bunch of
+                           picture has been requested via the interface
+        :param update_event:  event signaling that image have been added or removed in the ui.active_photos list. Upon
+                              this event tasks stop processing and reloads the ui.active_photos list so that they do not
+                              fail by requesting no longer valid indexes in the list
+        :param barrier:  threading  barrier used to wait that all thread reaches a consistent step
+        :param index_: index of the picture to be treated within the modulo p
+        :param step: p is the modulo that distribute the load between threads. For every slot of P image, thread one
+                     deals with images 1, p+1, 2p+1, 3p+1,...
+        :return: None or 255 if interrupted
+        """
+        # global ui  # required as called in a separate thread
+        keep_going = True
+        while keep_going:
+            keep_going = False
+            update_event.clear()
+            for i in range(0, len(self._photo_collection), step):
+                if stop_event.is_set():
+                    rc = barrier.wait()
+                    if rc == 0:
+                        stop_event.clear()
+                        logger.info(" IMAGE PREVIEW BACKGROUND LOADING CANCELLED")
+                    return 255
+                if update_event.is_set():
+                    rc = barrier.wait()  # wait all thread received the event before clearing it
+                    if rc == 0:
+                        logger.info(" IMAGE PREVIEW BACKGROUND LOADING RESET")
+                    update_event.clear()
+                    keep_going = True
+                    break
+                pos = i + index_
+                if pos <= len(self._photo_collection) - 1:
+                    self.load_image_previews_in_memory(pos)
+                    if progress_bar_ticker_function_reference:
+                        progress_bar_ticker_function_reference()
+        rc = barrier.wait()  # wait all tasks to complete
+        if rc == 0:
+            if load_completed_signal_emit_function_reference:
+                load_completed_signal_emit_function_reference()
+            logger.info(" IMAGE PREVIEW BACKGROUND LOADING COMPLETED")
+
+        return None
+
 
     def duplicate_photo(self, row, duplicate_method):
         picture = self._photo_collection[row]

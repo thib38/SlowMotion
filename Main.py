@@ -905,28 +905,19 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.myTable = ShowTableView(self, self.active_photos)
         self.my_list = ShowSummary(self.listView, self.active_photos)
         self.my_graph.compute_and_display_figure(self.active_photos)
-        if __debug__:
-            logger.debug("ShowSummary Displayed")
+        self.my_slider.display_by_row(0)
+        self.my_slider.set_cursor(0)
+        self.toggle_progress_bar()  # close progress bar
+        self.status_message_preserved = self.statusbar_message_qlabel.text()
+        self.statusbar_message_qlabel.setText("loading image previews...")
+        progress_bar_ticker = StatusProgressBarTicker(len(self.active_photos))
+        self.image_preview_load_completed = False
 
-        if input_media_is_file:
-            self.my_slider.display_by_row(0)
-            self.my_slider.set_cursor(0)
-
-            # start or restart background threads that will load pictures in memory in background
-            self.toggle_progress_bar()  # close progress bar
-            self.status_message_preserved = self.statusbar_message_qlabel.text()
-            self.statusbar_message_qlabel.setText("loading image previews...")
-            progress_bar_ticker = StatusProgressBarTicker(len(self.active_photos))
-            self.image_preview_load_completed = False
-            self.thread_list = self.active_photos.launch_background_picture_loader_threads(
-                progress_bar_ticker.tick,
-                self.BackgroundPictureLoadCompleted.emit
-            )
-        else:
-            pass
-            # logger.error("NotImplementedError")
-            # raise NotImplementedError
-
+        # start or restart background threads that will load pictures in memory in background
+        self.thread_list = self.active_photos.launch_background_picture_loader_threads(
+            progress_bar_ticker.tick,
+            self.BackgroundPictureLoadCompleted.emit
+        )
         # inform about status of load
         QMessageBox.about(self, PROGRAM_NAME, msgbox_txt)
         logger.info(" %s PHOTOS LOADED in Photo Class ", str(len(self.active_photos)))
