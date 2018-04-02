@@ -138,8 +138,7 @@ class Photo(StoreQPixmap):
 
     def __init__(self, file_name, metadata):
         super().__init__()
-        # self.file_name = str(file_name, 'utf-8')  # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
-        self.file_name = file_name    # TODO Shoud i add a PhotoWithMetadata unique ID - search how to compute this
+        self.file_name = file_name
         # store all existing metadata in the file as return by exiftool
         # Dictionary of tag/values
         self.exif_metadata = metadata
@@ -200,51 +199,10 @@ class Photo(StoreQPixmap):
     def __getstate__(self):
         logger.error("NotImplementedError")
         raise NotImplementedError
-        # TODO DEBUG REMOVE REMOVE
-        # for key in self.__dict__.keys():
-        #     print(key)
-
-        state = {}
-
-        state["file_name"] = self.file_name
-        # state["ctime"] = self.ctime
-        # state["exif_metadata"] = self.exif_metadata
-        # state["_shot_time"] = self._shot_time
-        # state["_binary_image_preview"] = self._binary_image_preview
-        state["_matplotlib_image_preview"] = self._matplotlib_image_preview
-        state["clone_set_with_next"] = self.clone_set_with_next
-        state["clone_set_with_previous"] = self.clone_set_with_previous
-
-        # then call pickle for StoreQpixmap moke class
-        store_qpixmap_state = self._pickle_stored_qpixmap()
-        for key, value in store_qpixmap_state.items():
-            state[key] = value
-
-        return state
 
     def __setstate__(self, state):
-
-        self.file_name = state["file_name"]
-        del state["file_name"]
-        # self.ctime = state["ctime"]
-        # del state["ctime"]
-        # self.exif_metadata = state["exif_metadata"]
-        # del state["exif_metadata"]
-        # self._shot_time = state["_shot_time"]
-        # del state["_shot_time"]
-        # self._binary_image_preview = state["_binary_image_preview"]
-        # del state["_binary_image_preview"]
-        self._matplotlib_image_preview = state["_matplotlib_image_preview"]
-        del state["_matplotlib_image_preview"]
-        self.clone_set_with_next = state["clone_set_with_next"]
-        del state["clone_set_with_next"]
-        self.clone_set_with_previous = state["clone_set_with_previous"]
-        del state["clone_set_with_previous"]
-
-        # then call unpickle for StoreQpixmap moke class - what remains in state is for StoreQpixmap
-        self._unpickle_stored_qpixmap(state)
-
-        return
+        logger.error("NotImplementedError")
+        raise NotImplementedError
 
 
 class PhotoFromVideo(Photo):
@@ -284,6 +242,54 @@ class PhotoFromVideo(Photo):
             self._matplotlib_image_preview = cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB)
 
         return self._matplotlib_image_preview
+
+    def __getstate__(self):
+
+        # TODO DEBUG REMOVE REMOVE
+        # for key in self.__dict__.keys():
+        #     print(key)
+
+        state = {}
+
+        state["file_name"] = self.file_name
+        state["exif_metadata"] = self.exif_metadata
+        state["_shot_time"] = self._shot_time
+        state["_matplotlib_image_preview"] = self._matplotlib_image_preview
+        state["_video_file_path"] = self._video_file_path
+        state["_index_in_video"] = self._index_in_video
+        state["clone_set_with_next"] = self.clone_set_with_next
+        state["clone_set_with_previous"] = self.clone_set_with_previous
+
+        # then call pickle for StoreQpixmap moke class
+        store_qpixmap_state = self._pickle_stored_qpixmap()
+        for key, value in store_qpixmap_state.items():
+            state[key] = value
+
+        return state
+
+    def __setstate__(self, state):
+
+        self.file_name = state["file_name"]
+        del state["file_name"]
+        self.exif_metadata = state["exif_metadata"]
+        del state["exif_metadata"]
+        self._shot_time = state["_shot_time"]
+        del state["_shot_time"]
+        self._matplotlib_image_preview = state["_matplotlib_image_preview"]
+        del state["_matplotlib_image_preview"]
+        self._video_file_path = state["_video_file_path"]
+        del state["_video_file_path"]
+        self._index_in_video = state["_index_in_video"]
+        del state["_index_in_video"]
+        self.clone_set_with_next = state["clone_set_with_next"]
+        del state["clone_set_with_next"]
+        self.clone_set_with_previous = state["clone_set_with_previous"]
+        del state["clone_set_with_previous"]
+
+        # then call unpickle for StoreQpixmap moke class - what remains in state is for StoreQpixmap
+        self._unpickle_stored_qpixmap(state)
+
+        return
 
 
 class PhotoWithMetadata(Photo):
