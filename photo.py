@@ -264,7 +264,17 @@ class PhotoFromVideo(Photo):
         if not isinstance(self._matplotlib_image_preview, np.ndarray):
             cap = cv2.VideoCapture(self._video_file_path)
             cap.set(cv2.CAP_PROP_POS_FRAMES, self._index_in_video)
-            ret, frame = cap.read()
+            i = 0
+            while True:
+                ret, frame = cap.read()
+                if ret:
+                    break
+                else:
+                    i += 1
+                    if i > 10:
+                        logger.error("cv2.VideoCapture keep not delivering image after 10 attempt")
+                        raise ValueError
+
             cap.release()
             width, heigth = __class__._matplotlib_image_preview_size
             image_resized = cv2.resize(frame, (width, heigth),
@@ -1277,7 +1287,79 @@ class PhotoCollection:
     def launch_background_picture_loader_threads(self,
                                                  progress_bar_ticker_function_reference=False,
                                                  load_completed_signal_emit_function_reference=False):
-        raise NotImplementedError
+        logger.info(" IMAGE PREVIEW BACKGROUND LOADING STARTED")
+        thread_list = []
+        for index_ in range(__class__._nb_of_background_picture_loading_threads):
+            t = threading.Thread(target=self._load_active_photos_preview_pictures_in_memory,
+                                 args=( self._stop_background_preview_load_event,
+                                       self._update_background_preview_load_event,
+                                       self._update_background_barrier,
+                                       index_,
+                                       __class__._nb_of_background_picture_loading_threads,
+                                       progress_bar_ticker_function_reference,
+                                       load_completed_signal_emit_function_reference)
+                                 )
+            t.daemon = True
+            t.start()
+            thread_list.append(t)
+        return thread_list
+
+    def _load_active_photos_preview_pictures_in_memory(self,
+                                                       stop_event,
+                                                       update_event,
+                                                       barrier,
+                                                       index_,
+                                                       step,
+                                                       progress_bar_ticker_function_reference,
+                                                       load_completed_signal_emit_function_reference):
+        """
+        This function is to be used in // threads. It loads preview images of the ui.active_photos list.
+        Each tasks loads the images of "index_" rank  within a slot of p image
+        For example index_ = 2 with step = 4 will load picture at rank 2,6,10,14,18,..
+
+        :param stop_event: event signaling that loading has to be stopped because loading of another bunch of
+                           picture has been requested via the interface
+        :param update_event:  event signaling that image have been added or removed in the ui.active_photos list. Upon
+                              this event tasks stop processing and reloads the ui.active_photos list so that they do not
+                              fail by requesting no longer valid indexes in the list
+        :param barrier:  threading  barrier used to wait that all thread reaches a consistent step
+        :param index_: index of the picture to be treated within the modulo p
+        :param step: p is the modulo that distribute the load between threads. For every slot of P image, thread one
+                     deals with images 1, p+1, 2p+1, 3p+1,...
+        :return: None or 255 if interrupted
+        """
+        # global ui  # required as called in a separate thread
+        keep_going = True
+        while keep_going:
+            keep_going = False
+            update_event.clear()
+            for i in range(0, len(self._photo_collection), step):
+                if stop_event.is_set():
+                    rc = barrier.wait()
+                    if rc == 0:
+                        stop_event.clear()
+                        logger.info(" IMAGE PREVIEW BACKGROUND LOADING CANCELLED")
+                    return 255
+                if update_event.is_set():
+                    rc = barrier.wait()  # wait all thread received the event before clearing it
+                    if rc == 0:
+                        logger.info(" IMAGE PREVIEW BACKGROUND LOADING RESET")
+                    update_event.clear()
+                    keep_going = True
+                    break
+                pos = i + index_
+                if pos <= len(self._photo_collection) - 1:
+                    self.load_image_previews_in_memory(pos)
+                    if progress_bar_ticker_function_reference:
+                        progress_bar_ticker_function_reference()
+        rc = barrier.wait()  # wait all tasks to complete
+        if rc == 0:
+            if load_completed_signal_emit_function_reference:
+                load_completed_signal_emit_function_reference()
+            logger.info(" IMAGE PREVIEW BACKGROUND LOADING COMPLETED")
+
+        return None
+
 
 
 class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION IS NOT NEEDED - PARENT ONE CAN DO
@@ -1416,26 +1498,6 @@ class PhotoOrderedCollectionFromVideoRead(PhotoCollection):
         #         file_treated_tick_function_reference()  # second tick per file treated if function provided
 
         return len(self)
-
-    def launch_background_picture_loader_threads(self,
-                                                 progress_bar_ticker_function_reference=False,
-                                                 load_completed_signal_emit_function_reference=False):
-        """
-                First implementation is probably dead slow as matplotlib reopen the VideoCapture for every frame
-                :param progress_bar_ticker_function_reference:
-                :param load_completed_signal_emit_function_reference:
-                :return:
-                """
-        for i, picture in enumerate(self._photo_collection):
-            picture.get_matplotlib_image_preview()
-            logger.info("frame nb %s loaded", str(i))
-            if progress_bar_ticker_function_reference:
-                progress_bar_ticker_function_reference()
-
-        if load_completed_signal_emit_function_reference:
-            load_completed_signal_emit_function_reference()
-
-        return None
 
 
 class PhotoOrderedCollectionByCapturetime(PhotoCollection):
@@ -1715,82 +1777,6 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
                 file_treated_tick_function_reference()  # second tick per file treated if function provided
 
         return len(self)
-
-    def launch_background_picture_loader_threads(self,
-                                                 progress_bar_ticker_function_reference=False,
-                                                 load_completed_signal_emit_function_reference=False):
-        logger.info(" IMAGE PREVIEW BACKGROUND LOADING STARTED")
-        thread_list = []
-        for index_ in range(__class__._nb_of_background_picture_loading_threads):
-            t = threading.Thread(target=self._load_active_photos_preview_pictures_in_memory,
-                                 args=( self._stop_background_preview_load_event,
-                                       self._update_background_preview_load_event,
-                                       self._update_background_barrier,
-                                       index_,
-                                       __class__._nb_of_background_picture_loading_threads,
-                                       progress_bar_ticker_function_reference,
-                                       load_completed_signal_emit_function_reference)
-                                 )
-            t.daemon = True
-            t.start()
-            thread_list.append(t)
-        return thread_list
-
-    def _load_active_photos_preview_pictures_in_memory(self,
-                                                       stop_event,
-                                                       update_event,
-                                                       barrier,
-                                                       index_,
-                                                       step,
-                                                       progress_bar_ticker_function_reference,
-                                                       load_completed_signal_emit_function_reference):
-        """
-        This function is to be used in // threads. It loads preview images of the ui.active_photos list.
-        Each tasks loads the images of "index_" rank  within a slot of p image
-        For example index_ = 2 with step = 4 will load picture at rank 2,6,10,14,18,..
-
-        :param stop_event: event signaling that loading has to be stopped because loading of another bunch of
-                           picture has been requested via the interface
-        :param update_event:  event signaling that image have been added or removed in the ui.active_photos list. Upon
-                              this event tasks stop processing and reloads the ui.active_photos list so that they do not
-                              fail by requesting no longer valid indexes in the list
-        :param barrier:  threading  barrier used to wait that all thread reaches a consistent step
-        :param index_: index of the picture to be treated within the modulo p
-        :param step: p is the modulo that distribute the load between threads. For every slot of P image, thread one
-                     deals with images 1, p+1, 2p+1, 3p+1,...
-        :return: None or 255 if interrupted
-        """
-        # global ui  # required as called in a separate thread
-        keep_going = True
-        while keep_going:
-            keep_going = False
-            update_event.clear()
-            for i in range(0, len(self._photo_collection), step):
-                if stop_event.is_set():
-                    rc = barrier.wait()
-                    if rc == 0:
-                        stop_event.clear()
-                        logger.info(" IMAGE PREVIEW BACKGROUND LOADING CANCELLED")
-                    return 255
-                if update_event.is_set():
-                    rc = barrier.wait()  # wait all thread received the event before clearing it
-                    if rc == 0:
-                        logger.info(" IMAGE PREVIEW BACKGROUND LOADING RESET")
-                    update_event.clear()
-                    keep_going = True
-                    break
-                pos = i + index_
-                if pos <= len(self._photo_collection) - 1:
-                    self.load_image_previews_in_memory(pos)
-                    if progress_bar_ticker_function_reference:
-                        progress_bar_ticker_function_reference()
-        rc = barrier.wait()  # wait all tasks to complete
-        if rc == 0:
-            if load_completed_signal_emit_function_reference:
-                load_completed_signal_emit_function_reference()
-            logger.info(" IMAGE PREVIEW BACKGROUND LOADING COMPLETED")
-
-        return None
 
 
     def duplicate_photo(self, row, duplicate_method):
