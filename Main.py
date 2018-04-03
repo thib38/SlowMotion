@@ -860,8 +860,8 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         else:  # this is a video
             self.active_photos = PhotoOrderedCollectionFromVideoRead()
             self.active_photos_backup = PhotoOrderedCollectionFromVideoRead()
-            self.discarded_photos = PhotoOrderedCollectionFromVideoRead()
-            self.discarded_photos_backup = PhotoOrderedCollectionFromVideoRead()
+            self.discarded_photos = PhotoNonOrderedCollection()
+            self.discarded_photos_backup = PhotoNonOrderedCollection()
             head, tail = os.path.split(file_path)  # remove filename
             os.chdir(head)
             # get number of frames in video

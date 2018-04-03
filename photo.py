@@ -988,12 +988,18 @@ class PhotoCloned(StoreQPixmap):
         # filename derived from original file by adding _clone  before the dot preceeding the suffix
         # TODO ensure new clone name is unique for all clones of  given Physical picture the random below
         # TODO is quick and dirty fixing - uniqueId should be provide from outside the class
-        self.file_name \
-            = self.clone_set.previous_picture.file_name.split(".")[-2] \
-              + "_" \
-              + str(len(clone_set.list_of_clones) + 1) \
-              + "." \
-              + self.clone_set.previous_picture.file_name.split(".")[-1]
+        if len(self.clone_set.previous_picture.file_name.split(".")) == 1:   # video frame fake file name have  no suffix
+            self.file_name \
+                = self.clone_set.previous_picture.file_name.split(".")[-1] \
+                  + "_" \
+                  + str(len(clone_set.list_of_clones) + 1)
+        else:   # whereas photo file do have a suffix (.jPG, .NEF,...)
+            self.file_name \
+                = self.clone_set.previous_picture.file_name.split(".")[-2] \
+                  + "_" \
+                  + str(len(clone_set.list_of_clones) + 1) \
+                  + "." \
+                  + self.clone_set.previous_picture.file_name.split(".")[-1]
         # set timestamp to the middle of interval between preceding and following pictures
         self._shot_time = precedent.shot_timestamp \
                           + (successor.shot_timestamp - precedent.shot_timestamp) / 2
@@ -1366,6 +1372,230 @@ class PhotoCollection:
 
         return None
 
+
+    def duplicate_photo(self, row, duplicate_method):
+        picture = self._photo_collection[row]
+        status = True
+        message = "OK"
+
+        # input parameters checks
+        if len(self._photo_collection) < 2:
+            status = False
+            message = "collection must be made of at least 2 picture so that duplicate can be created"
+            return (status, message, None)
+        elif row == len(self._photo_collection) - 1:
+            status = False
+            message = "last picture can't be duplicated"
+            return (status, message, None)
+        elif duplicate_method not in DuplicateMethod.get_duplicate_method_supported_list():
+            status = False
+            message = "duplicate method: " + str(duplicate_method) + " is not supported"
+            return (status, message, None)
+
+        # we are almost safe now :-) adequation of duplicate_method with previous clone still to be checked
+
+        if isinstance(picture, Photo):  # Picture is a real one
+            if picture.clone_set_with_next is None:  # picture has no clone yet
+                # create a CloneSet by instanciating the  loneSet subclass that is registered as a PhotoCloned
+                # class dictionnary - This spares the effort of implementing multiple if statements
+                clone_set = CloneSet(
+                    picture,
+                    self._photo_collection[row + 1],
+                    duplicate_method,
+                )
+                # create Cloned picture
+                duplicated_picture = PhotoCloned(clone_set,
+                                                 self._photo_collection[row],
+                                                 self._photo_collection[row + 1]
+                                                 )
+                # set-up link between pictures and CloseSet both ways
+                clone_set.list_of_clones.append(duplicated_picture)  # add picture to cloneset
+                picture.clone_set_with_next = clone_set  # link clone_set with previous picture
+                self._photo_collection[row + 1].clone_set_with_previous = clone_set  # and with following picture
+                # print(picture.clone_set_with_next.list_of_clones)
+                # add picture to collection
+                self.add(duplicated_picture)
+            else:  # physical picture with existing clones
+                # check if existing clone_set has same duplicate method - if not it is not possible to add a new
+                # clone to the clone set as all clones between two pictures must be generated with same duplicate
+                # method
+                if picture.clone_set_with_next.duplicate_method != duplicate_method:
+                    # if PhotoCloned.clone_set_classes_dict_per_clone_method[duplicate_method] \
+                    #         != type(picture.clone_set_with_next):
+                    status = False
+                    message = "Not possible to duplicate with : " + str(duplicate_method) + \
+                              " method since cloned photos created with another method (" + \
+                              str(picture.clone_set_with_next.duplicate_method) + ") already exist"
+                    return (status, message, None)
+
+                # create Cloned picture
+                duplicated_picture = PhotoCloned(picture.clone_set_with_next,
+                                                 self._photo_collection[row],
+                                                 self._photo_collection[row + 1]
+                                                 )
+                # set-up link between pictures and CloseSet both ways
+                picture.clone_set_with_next.list_of_clones.append(duplicated_picture)  # add picture to clone set
+                # add picture to collection
+                self.add(duplicated_picture)
+                # distribute equal intervals between picture in clone set
+                self.evenly_distribute_interval_over_clone_pictures_in_cloneset(duplicated_picture.clone_set)
+
+        elif isinstance(picture, PhotoCloned):  # is a clone
+            if picture.clone_set.duplicate_method != duplicate_method:
+                # if PhotoCloned.clone_set_classes_dict_per_clone_method[duplicate_method] \
+                #         != type(picture.clone_set):
+                status = False
+                message = "Not possible to duplicate with : " + str(duplicate_method) + \
+                          " method since cloned photos created with another method (" + \
+                          str(picture.clone_set.duplicate_method) + ") already exist"
+                return (status, message, None)
+            # create Cloned picture
+            duplicated_picture = PhotoCloned(picture.clone_set,
+                                             self._photo_collection[row],
+                                             self._photo_collection[row + 1]
+                                             )
+            # set-up link between pictures and CloseSet both ways
+            picture.clone_set.list_of_clones.append(duplicated_picture)  # add picture to cloneset
+            # print(picture.clone_set.list_of_clones)
+            # add picture to collection
+            self.add(duplicated_picture)
+            # distribute equal intervals between picture in clone set
+            self.evenly_distribute_interval_over_clone_pictures_in_cloneset(duplicated_picture.clone_set)
+        else:
+            logger.error("NotImplementedError")
+            raise NotImplementedError
+
+        return (status, message, duplicated_picture)
+
+    def duplicate_list_of_photos(self, sorted_list_of_photo_index_2_be_duplicated, duplicate_method):
+        status = True
+        duplicated_pictures = []  # contains list of picture that could be duplicated
+        could_not_duplicate_rows = {}  # dict 'row number' : 'message' of picture that can't be duplicated
+        message = "OK"
+
+        # check if all rows/picture are eligible to duplication
+        i = 0
+        for row in sorted_list_of_photo_index_2_be_duplicated:
+            rc, msg, duplicated_picture = self.duplicate_photo(row + i, duplicate_method)
+            if rc:
+                i += 1
+                duplicated_pictures.append(duplicated_picture)
+            else:
+                status = False
+                message = "NOK"
+                could_not_duplicate_rows[self._photo_collection[row + i]] = msg
+
+        return (status, message, duplicated_pictures, could_not_duplicate_rows)
+
+    def evenly_distribute_interval_over_clone_pictures_in_cloneset(self, clone_set):
+        """
+        when picture are added to collection via "add" method their timestamp is assigned as the mid-point between
+        previous and next picture - over multiple, not evenly dsitributed, duplication this causes interval of different
+        values within same clone set (means set of clone picture between two real picture) - this is fake and error
+        prone as clones have no real shot_timestamp and should therefore appear as evenly distributed.
+        This method is assigning timestamp to all picture of a clone set so that they are distributed with the very
+        same interval between themselves
+
+        :param clone_set: clone_set for which picture are to be treated
+        :return:
+        """
+
+        if len(clone_set.list_of_clones) == 0:
+            return False
+
+        # compute interval between clones
+        interval = (clone_set.next_picture.shot_timestamp - clone_set.previous_picture.shot_timestamp) / \
+                   (len(clone_set.list_of_clones) + 1)
+        # sort the clone pictures by order of position in the collection as the order in the list_of_clones is the
+        # one of insertion and depending it can be different subject to clone creation order. for instance
+        # creating clone from previous image yield them to be in reverse order in list_of_clones as compared to the
+        # order in the collection
+        clone_set.list_of_clones.sort(key=lambda picture: self.position(picture))
+        for i, picture in enumerate(clone_set.list_of_clones):
+            picture.set_shot_timestamp(
+                clone_set.previous_picture.shot_timestamp +
+                ((i + 1) * interval)
+            )
+
+        return True
+
+    def remove_photo(self, row):  # TODO should be an overwrite of parent method remove
+        picture = self._photo_collection[row]
+        status = True
+        message = "OK"
+
+        if not (0 <= row < len(self._photo_collection)):
+            status = False
+            message = "row: " + str(row) + "out of _photo_collection range"
+            return (status, message)
+
+        # Check if row is physical picture or clone
+        if isinstance(picture, Photo):  # this is a physical picture
+            # if the picture is used to build existing clone picture then it can't be deleted until all clones
+            # are actually removed
+            if (picture.clone_set_with_next is not None) or (picture.clone_set_with_previous is not None):
+                status = False
+                message = "Can't remove picture as it references an existing clone picture - " \
+                          "clone picture must be removed first"
+                return (status, message)
+            self.remove(picture)  # use remove rather than del as it emits signal for preview background load reset
+        elif isinstance(picture, PhotoCloned):  # this is a clone picture
+            # if this is the last clone in the CloneSet then remove CloneSet and links to it before actually removing
+            # picture
+            picture.clone_set.list_of_clones.remove(picture)  # remove picture from clone_set list
+            if len(picture.clone_set.list_of_clones) == 0:
+                self._photo_collection[row - 1].clone_set_with_next = None
+                self._photo_collection[row + 1].clone_set_with_previous = None
+                del picture.clone_set
+            else:
+                self.evenly_distribute_interval_over_clone_pictures_in_cloneset(picture.clone_set)
+            self.remove(picture)  # use remove rather than del as it emits signal for preview background load reset
+
+            # TODO NOT IN ALL CASES duplicated_picture.clone_set.evenly_distribute_interval_over_clone_pictures_in_cloneset()
+        else:
+            logger.error("NotImplementedError")
+            raise NotImplementedError
+
+        return (status, message)
+
+    def remove_list_of_photos(self, sorted_list_of_photo_index_2_be_duplicated):
+        status = True
+        removed_pictures = []  # contains list of picture that could be removed
+        could_not_remove_rows = {}  # dict 'index number' : 'message' of picture that can't be removed
+        message = "OK"
+
+        # split clones from real pictures
+        clone_index_list = [index for index in sorted_list_of_photo_index_2_be_duplicated if
+                            isinstance(self._photo_collection[index], PhotoCloned)]
+        photo_index_list = [index for index in sorted_list_of_photo_index_2_be_duplicated if
+                            isinstance(self._photo_collection[index], PhotoWithMetadata)]
+
+        # first remove all clones as it is always possible to remove and it will "free-up" pictures with links
+        # on clones that are to be deleted in the list
+        for i, index in enumerate(clone_index_list):
+            removed_pictures.append(self._photo_collection[index - i])
+            rc, msg = self.remove_photo(index - i)
+            if rc:  # adjust row number in photo_list_index in line with removal done in clone_list_index
+                for j, photo_index in enumerate(photo_index_list):
+                    if photo_index >= index - i:  # if a clone with lower index has been removed
+                        photo_index_list[j] -= 1  # ...then shift row up by  one position
+            else:
+                raise ValueError  # means index out of _photo_collection range
+
+        # then remove picture  that are not linked to any clone
+        i = 0
+        for index in photo_index_list:
+            removed_pictures.append(self._photo_collection[index - i])
+            rc, msg = self.remove_photo(index - i)
+            if rc:
+                i += 1
+            else:
+                removed_pictures.pop()
+                status = False
+                message = "NOK"
+                could_not_remove_rows[self._photo_collection[index - i]] = msg
+
+        return (status, message, removed_pictures, could_not_remove_rows)
 
 
 class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION IS NOT NEEDED - PARENT ONE CAN DO
@@ -1785,229 +2015,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
         return len(self)
 
 
-    def duplicate_photo(self, row, duplicate_method):
-        picture = self._photo_collection[row]
-        status = True
-        message = "OK"
 
-        # input parameters checks
-        if len(self._photo_collection) < 2:
-            status = False
-            message = "collection must be made of at least 2 picture so that duplicate can be created"
-            return (status, message, None)
-        elif row == len(self._photo_collection) - 1:
-            status = False
-            message = "last picture can't be duplicated"
-            return (status, message, None)
-        elif duplicate_method not in DuplicateMethod.get_duplicate_method_supported_list():
-            status = False
-            message = "duplicate method: " + str(duplicate_method) + " is not supported"
-            return (status, message, None)
-
-        # we are almost safe now :-) adequation of duplicate_method with previous clone still to be checked
-
-        if isinstance(picture, PhotoWithMetadata):  # Picture is a real one
-            if picture.clone_set_with_next is None:  # picture has no clone yet
-                # create a CloneSet by instanciating the  loneSet subclass that is registered as a PhotoCloned
-                # class dictionnary - This spares the effort of implementing multiple if statements
-                clone_set = CloneSet(
-                    picture,
-                    self._photo_collection[row + 1],
-                    duplicate_method,
-                )
-                # create Cloned picture
-                duplicated_picture = PhotoCloned(clone_set,
-                                                 self._photo_collection[row],
-                                                 self._photo_collection[row + 1]
-                                                 )
-                # set-up link between pictures and CloseSet both ways
-                clone_set.list_of_clones.append(duplicated_picture)  # add picture to cloneset
-                picture.clone_set_with_next = clone_set  # link clone_set with previous picture
-                self._photo_collection[row + 1].clone_set_with_previous = clone_set  # and with following picture
-                # print(picture.clone_set_with_next.list_of_clones)
-                # add picture to collection
-                self.add(duplicated_picture)
-            else:  # physical picture with existing clones
-                # check if existing clone_set has same duplicate method - if not it is not possible to add a new
-                # clone to the clone set as all clones between two pictures must be generated with same duplicate
-                # method
-                if picture.clone_set_with_next.duplicate_method != duplicate_method:
-                    # if PhotoCloned.clone_set_classes_dict_per_clone_method[duplicate_method] \
-                    #         != type(picture.clone_set_with_next):
-                    status = False
-                    message = "Not possible to duplicate with : " + str(duplicate_method) + \
-                              " method since cloned photos created with another method (" + \
-                              str(picture.clone_set_with_next.duplicate_method) + ") already exist"
-                    return (status, message, None)
-
-                # create Cloned picture
-                duplicated_picture = PhotoCloned(picture.clone_set_with_next,
-                                                 self._photo_collection[row],
-                                                 self._photo_collection[row + 1]
-                                                 )
-                # set-up link between pictures and CloseSet both ways
-                picture.clone_set_with_next.list_of_clones.append(duplicated_picture)  # add picture to cloneset
-                # add picture to collection
-                self.add(duplicated_picture)
-                # distribute equal intervals between picture in clone set
-                self.evenly_distribute_interval_over_clone_pictures_in_cloneset(duplicated_picture.clone_set)
-
-        elif isinstance(picture, PhotoCloned):  # is a clone
-            if picture.clone_set.duplicate_method != duplicate_method:
-                # if PhotoCloned.clone_set_classes_dict_per_clone_method[duplicate_method] \
-                #         != type(picture.clone_set):
-                status = False
-                message = "Not possible to duplicate with : " + str(duplicate_method) + \
-                          " method since cloned photos created with another method (" + \
-                          str(picture.clone_set.duplicate_method) + ") already exist"
-                return (status, message, None)
-            # create Cloned picture
-            duplicated_picture = PhotoCloned(picture.clone_set,
-                                             self._photo_collection[row],
-                                             self._photo_collection[row + 1]
-                                             )
-            # set-up link between pictures and CloseSet both ways
-            picture.clone_set.list_of_clones.append(duplicated_picture)  # add picture to cloneset
-            # print(picture.clone_set.list_of_clones)
-            # add picture to collection
-            self.add(duplicated_picture)
-            # distribute equal intervals between picture in clone set
-            self.evenly_distribute_interval_over_clone_pictures_in_cloneset(duplicated_picture.clone_set)
-        else:
-            logger.error("NotImplementedError")
-            raise NotImplementedError
-
-        return (status, message, duplicated_picture)
-
-    def duplicate_list_of_photos(self, sorted_list_of_photo_index_2_be_duplicated, duplicate_method):
-        status = True
-        duplicated_pictures = []  # contains list of picture that could be duplicated
-        could_not_duplicate_rows = {}  # dict 'row number' : 'message' of picture that can't be duplicated
-        message = "OK"
-
-        # check if all rows/picture are eligible to duplication
-        i = 0
-        for row in sorted_list_of_photo_index_2_be_duplicated:
-            rc, msg, duplicated_picture = self.duplicate_photo(row + i, duplicate_method)
-            if rc:
-                i += 1
-                duplicated_pictures.append(duplicated_picture)
-            else:
-                status = False
-                message = "NOK"
-                could_not_duplicate_rows[self._photo_collection[row + i]] = msg
-
-        return (status, message, duplicated_pictures, could_not_duplicate_rows)
-
-    def remove_photo(self, row):  # TODO should be an overwrite of parent method remove
-        picture = self._photo_collection[row]
-        status = True
-        message = "OK"
-
-        if not (0 <= row < len(self._photo_collection)):
-            status = False
-            message = "row: " + str(row) + "out of _photo_collection range"
-            return (status, message)
-
-        # Check if row is physical picture or clone
-        if isinstance(picture, PhotoWithMetadata):  # this is a physical picture
-            # if the picture is used to build existing clone picture then it can't be deleted until all clones
-            # are actually removed
-            if (picture.clone_set_with_next is not None) or (picture.clone_set_with_previous is not None):
-                status = False
-                message = "Can't remove picture as it references an existing clone picture - " \
-                          "clone picture must be removed first"
-                return (status, message)
-            self.remove(picture)  # use remove rather than del as it emits signal for preview background load reset
-        elif isinstance(picture, PhotoCloned):  # this is a clone picture
-            # if this is the last clone in the CloneSet then remove CloneSet and links to it before actually removing
-            # picture
-            picture.clone_set.list_of_clones.remove(picture)  # remove picture from clone_set list
-            if len(picture.clone_set.list_of_clones) == 0:
-                self._photo_collection[row - 1].clone_set_with_next = None
-                self._photo_collection[row + 1].clone_set_with_previous = None
-                del picture.clone_set
-            else:
-                self.evenly_distribute_interval_over_clone_pictures_in_cloneset(picture.clone_set)
-            self.remove(picture)  # use remove rather than del as it emits signal for preview background load reset
-
-            # TODO NOT IN ALL CASES duplicated_picture.clone_set.evenly_distribute_interval_over_clone_pictures_in_cloneset()
-        else:
-            logger.error("NotImplementedError")
-            raise NotImplementedError
-
-        return (status, message)
-
-    def remove_list_of_photos(self, sorted_list_of_photo_index_2_be_duplicated):
-        status = True
-        removed_pictures = []  # contains list of picture that could be removed
-        could_not_remove_rows = {}  # dict 'index number' : 'message' of picture that can't be removed
-        message = "OK"
-
-        # split clones from real pictures
-        clone_index_list = [index for index in sorted_list_of_photo_index_2_be_duplicated if
-                            isinstance(self._photo_collection[index], PhotoCloned)]
-        photo_index_list = [index for index in sorted_list_of_photo_index_2_be_duplicated if
-                            isinstance(self._photo_collection[index], PhotoWithMetadata)]
-
-        # first remove all clones as it is always possible to remove and it will "free-up" pictures with links
-        # on clones that are to be deleted in the list
-        for i, index in enumerate(clone_index_list):
-            removed_pictures.append(self._photo_collection[index - i])
-            rc, msg = self.remove_photo(index - i)
-            if rc:  # adjust row number in photo_list_index in line with removal done in clone_list_index
-                for j, photo_index in enumerate(photo_index_list):
-                    if photo_index >= index - i:  # if a clone with lower index has been removed
-                        photo_index_list[j] -= 1  # ...then shift row up by  one position
-            else:
-                raise ValueError  # means index out of _photo_collection range
-
-        # then remove picture  that are not linked to any clone
-        i = 0
-        for index in photo_index_list:
-            removed_pictures.append(self._photo_collection[index - i])
-            rc, msg = self.remove_photo(index - i)
-            if rc:
-                i += 1
-            else:
-                removed_pictures.pop()
-                status = False
-                message = "NOK"
-                could_not_remove_rows[self._photo_collection[index - i]] = msg
-
-        return (status, message, removed_pictures, could_not_remove_rows)
-
-    def evenly_distribute_interval_over_clone_pictures_in_cloneset(self, clone_set):
-        """
-        when picture are added to collection via "add" method their timestamp is assigned as the mid-point between
-        previous and next picture - over multiple, not evenly dsitributed, duplication this causes interval of different
-        values within same clone set (means set of clone picture between two real picture) - this is fake and error
-        prone as clones have no real shot_timestamp and should therefore appear as evenly distributed.
-        This method is assigning timestamp to all picture of a clone set so that they are distributed with the very
-        same interval between themselves
-
-        :param clone_set: clone_set for which picture are to be treated
-        :return:
-        """
-
-        if len(clone_set.list_of_clones) == 0:
-            return False
-
-        # compute interval between clones
-        interval = (clone_set.next_picture.shot_timestamp - clone_set.previous_picture.shot_timestamp) / \
-                   (len(clone_set.list_of_clones) + 1)
-        # sort the clone pictures by order of position in the collection as the order in the list_of_clones is the
-        # one of insertion and depending it can be different subject to clone creation order. for instance
-        # creating clone from previous image yield them to be in reverse order in list_of_clones as compared to the
-        # order in the collection
-        clone_set.list_of_clones.sort(key=lambda picture: self.position(picture))
-        for i, picture in enumerate(clone_set.list_of_clones):
-            picture.set_shot_timestamp(
-                clone_set.previous_picture.shot_timestamp +
-                ((i + 1) * interval)
-            )
-
-        return True
 
     def generate_computed_pictures(self,
                                    output="file",  # can be in {"file", "opencv3", "qpixmap"}
