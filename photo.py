@@ -243,6 +243,17 @@ class PhotoFromVideo(Photo):
 
         return self._matplotlib_image_preview
 
+    def get_opencv_image_fullsize(self):
+        """
+        Return the full definition image in an opencv mumpy BGR format if the mime/type is implemented
+        else it returns False
+
+        :return:
+        """
+        raise NotImplementedError
+        return img_cv2
+
+
     def __getstate__(self):
 
         # TODO DEBUG REMOVE REMOVE
