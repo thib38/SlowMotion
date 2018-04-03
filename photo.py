@@ -1776,7 +1776,7 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
         # and then creates PhotoWithMetadata class instances and populate container
         for file_, metadata_ in resultats.items():
             try:
-                self.add(PhotoWithMetadata(file_, metadata_))
+                self.add(PhotoWithMetadata(str(file_, 'utf-8'), metadata_))
             except Exception as e:
                 print(exception_to_string(e))
             if file_treated_tick_function_reference:
