@@ -444,80 +444,82 @@ class PhotoWithMetadata(Photo):
 
             return np.dstack([r, g, b])
 
-        if self.exif_metadata["File:MIMEType"] not in __class__._SUPPORTED_MIME_TYPES:
-            return False
+        if self._opencv_image_fullsize is None:
 
-        elif self.exif_metadata["File:MIMEType"] == "image/jpeg":
-             img_cv2 = cv2.imread(self.file_name, cv2.IMREAD_COLOR)
+            if self.exif_metadata["File:MIMEType"] not in __class__._SUPPORTED_MIME_TYPES:
+                return False
 
-        elif self.exif_metadata["File:MIMEType"] == "image/x-nikon-nef":
+            elif self.exif_metadata["File:MIMEType"] == "image/jpeg":
+                self._opencv_image_fullsize = cv2.imread(self.file_name, cv2.IMREAD_COLOR)
 
-            with rawpy.imread(self.file_name) as raw:
-                # rgb = raw.postprocess(use_auto_wb=True, no_auto_bright=True)
-                rgb = raw.postprocess(no_auto_bright=True, use_camera_wb=True)
+            elif self.exif_metadata["File:MIMEType"] == "image/x-nikon-nef":
 
-                bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                with rawpy.imread(self.file_name) as raw:
+                    # rgb = raw.postprocess(use_auto_wb=True, no_auto_bright=True)
+                    rgb = raw.postprocess(no_auto_bright=True, use_camera_wb=True)
 
-                if __debug__:
-                    print(logger.debug("shape of bdr image is %s", str(bgr.shape)))
+                    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
-                # try:
-                #     # rgb = raw.postprocess(use_camera_wb=True, output_color=(sRGB=1), gamma=(2.222, 4.5))
-                #     rgb = raw.postprocess(use_camera_wb=True, gamma=(2.222, 4.5))
-                # except Exception as e:
-                #     print(exception_to_string(e))
+                    if __debug__:
+                        print(logger.debug("shape of bdr image is %s", str(bgr.shape)))
+
+                    # try:
+                    #     # rgb = raw.postprocess(use_camera_wb=True, output_color=(sRGB=1), gamma=(2.222, 4.5))
+                    #     rgb = raw.postprocess(use_camera_wb=True, gamma=(2.222, 4.5))
+                    # except Exception as e:
+                    #     print(exception_to_string(e))
+                    #
+                    # print(rgb.shape)
+
+                    self._opencv_image_fullsize = bgr
+
+                # proc = libraw.LibRaw()
+                # proc.open_file(self.file_name)
+                # proc.unpack()
+                # mosaic = proc.imgdata.rawdata.raw_image
                 #
-                # print(rgb.shape)
+                # # mapping to linear values
+                # lin_lut = proc.imgdata.color.curve  # linearisation look up table
+                # mosaic = lin_lut[mosaic]
+                #
+                # black = proc.imgdata.color.black
+                # saturation = proc.imgdata.color.maximum
+                # mosaic -= black    # black substraction
+                #
+                # uint14_max = 2**14 - 1
+                # mosaic *= int(uint14_max / (saturation - black))
+                # mosaic = np.clip(mosaic, 0, uint14_max)      #clip to range
+                #
+                # # white balancing
+                # assert(proc.imgdata.idata.cdesc == b"RGBG")
+                #
+                # cam_mul = proc.imgdata.color.cam_mul  # RGB camera multiplier
+                # cam_mul /= cam_mul[1]                 # scale green to 1
+                # mosaic[0::2, 0::2] *= cam_mul[0]      # scale reds
+                # mosaic[1::2, 1::2] *= cam_mul[2]      # scale blues
+                # mosaic = np.clip(mosaic, 0, uint14_max)      # clip to range
+                #
+                # # demosaicing
+                # img = downsample(mosaic)
+                #
+                # # colour space conversion
+                # cam2sgrb = proc.imgdata.color.rgb_cam[:, 0:3]
+                # cam2sgrb = np.round(cam2sgrb * 255).astype(np.int16)
+                # img = img // 2**6   # reduce dynamic range to 8bpp from 14bpp - 14 - 8 = 6
+                # shape = img.shape
+                # pixels = img.reshape(-1, 3).T    # 3xN array of picels
+                # pixels = cam2sgrb.dot(pixels) // 255
+                # img = pixels.T.reshape(shape)
+                # img = np.clip(img, 0, 255).astype(np.uint8)
+                #
+                # # gamma correction
+                # gcurve = [(i/255) ** (1/2.2) for i in range(256)]
+                # gcurve = np.array(gcurve * 255, dtype=np.uint8)
+                # img = gcurve[img]
+                #
+                # img_cv2 = img
 
-            img_cv2 = bgr
-
-            # proc = libraw.LibRaw()
-            # proc.open_file(self.file_name)
-            # proc.unpack()
-            # mosaic = proc.imgdata.rawdata.raw_image
-            #
-            # # mapping to linear values
-            # lin_lut = proc.imgdata.color.curve  # linearisation look up table
-            # mosaic = lin_lut[mosaic]
-            #
-            # black = proc.imgdata.color.black
-            # saturation = proc.imgdata.color.maximum
-            # mosaic -= black    # black substraction
-            #
-            # uint14_max = 2**14 - 1
-            # mosaic *= int(uint14_max / (saturation - black))
-            # mosaic = np.clip(mosaic, 0, uint14_max)      #clip to range
-            #
-            # # white balancing
-            # assert(proc.imgdata.idata.cdesc == b"RGBG")
-            #
-            # cam_mul = proc.imgdata.color.cam_mul  # RGB camera multiplier
-            # cam_mul /= cam_mul[1]                 # scale green to 1
-            # mosaic[0::2, 0::2] *= cam_mul[0]      # scale reds
-            # mosaic[1::2, 1::2] *= cam_mul[2]      # scale blues
-            # mosaic = np.clip(mosaic, 0, uint14_max)      # clip to range
-            #
-            # # demosaicing
-            # img = downsample(mosaic)
-            #
-            # # colour space conversion
-            # cam2sgrb = proc.imgdata.color.rgb_cam[:, 0:3]
-            # cam2sgrb = np.round(cam2sgrb * 255).astype(np.int16)
-            # img = img // 2**6   # reduce dynamic range to 8bpp from 14bpp - 14 - 8 = 6
-            # shape = img.shape
-            # pixels = img.reshape(-1, 3).T    # 3xN array of picels
-            # pixels = cam2sgrb.dot(pixels) // 255
-            # img = pixels.T.reshape(shape)
-            # img = np.clip(img, 0, 255).astype(np.uint8)
-            #
-            # # gamma correction
-            # gcurve = [(i/255) ** (1/2.2) for i in range(256)]
-            # gcurve = np.array(gcurve * 255, dtype=np.uint8)
-            # img = gcurve[img]
-            #
-            # img_cv2 = img
-
-        return img_cv2
+        return self._opencv_image_fullsize
 
     # TODO should this sort be maintained ? if i want the container class to be orderd on different tag the
     # TODO ordering should be managed in the container PhotoCollection and not in thePhoto itself that should
@@ -1668,7 +1670,7 @@ class PhotoCollection:
             # create QT image
             image = QImage(img_rgb, img_rgb.shape[1],
                            img_rgb.shape[0], img_rgb.shape[1] * 3, QImage.Format_RGB888)
-            qpixmap_ = QPi xmap(image)
+            qpixmap_ = QPixmap(image)
 
             return qpixmap_
 
@@ -1729,25 +1731,27 @@ class PhotoCollection:
             if index < index_start or index > index_stop:
                 continue
 
-            # i += 1
             sequence_file_name = target_directory + "\\LRT_{0:05d}".format(
                 index + 1) + ".jpg "  # TODO implement case where images are not jpg !
 
-            # if isinstance(picture, PhotoWithMetadata):  # this is a real picture - simply copy it to new directory
             if isinstance(picture, Photo):  # this is a real picture - simply copy it to new directory
 
-                # only jpeg is implemented
-                # if picture.exif_metadata["File:MIMEType"] != "image/jpeg":
-                #     continue  # TODO make this neater by refering to common supported list
+                # only jpeg output format is implemented. It is defined when building the name of the output file
 
                 if output == "file":
 
-                    try:   # TODO this copy file doesn't work for video as no file exists on disk
-                        shutil.copyfile(current_directory + "\\" + picture.file_name,
-                                        sequence_file_name)
+                    # try:   # TODO this copy file doesn't work for video as no file exists on disk
+                    #     shutil.copyfile(current_directory + "\\" + picture.file_name,
+                    #                     sequence_file_name)
+                    #     logger.info("%s file extracted as %s", picture.file_name, sequence_file_name)
+                    # except Exception as Err:
+                    #     logger.error("copy failed for file %s with error code : %s", picture.file_name, str(Err))
+
+                    try:
+                        cv2.imwrite(sequence_file_name, picture.get_opencv_image_fullsize())
                         logger.info("%s file extracted as %s", picture.file_name, sequence_file_name)
-                    except Exception as Err:
-                        logger.error("copy failed for file %s with error code : %s", picture.file_name, str(Err))
+                    except Exception as e:
+                        print(exception_to_string(e))
 
                 elif output == "opencv3":
 
@@ -1786,23 +1790,12 @@ class PhotoCollection:
                 # draw_text(img_transition,str(picture.duplicate_method), 150, 150)
 
                 if output == "file":
-                    # load previous and next picture in memory
-                    # TODO could be optimize by loading only once per clone_set
-                    try:
-                        img_before = cv2.imread(current_directory + "\\"
-                                                + picture.clone_set.previous_picture.file_name
-                                                , cv2.IMREAD_COLOR)
-                        img_after = cv2.imread(current_directory + "\\"
-                                               + picture.clone_set.next_picture.file_name
-                                               , cv2.IMREAD_COLOR)
-                    except Exception as e:
-                        print(exception_to_string(e))
 
                     # create the new picture in memory from previous ones -
                     img_transition \
                         = picture.clone_set.duplicate_method_set.create_transition_image(
-                        img_before,
-                        img_after,
+                        picture.clone_set.previous_picture.get_opencv_image_fullsize(),
+                        picture.clone_set.next_picture.get_opencv_image_fullsize(),
                         nb_intervals,
                         interval_rank,
                     )
@@ -1817,22 +1810,11 @@ class PhotoCollection:
                     # TODO NEED TO FIX INSTALL OF PY3EXIV2 package that fails with python 3.6 on windows due to utf-8 decode error
 
                 elif output == "opencv3":
-                    # load previous and next picture in memory
-                    # TODO could be optimize by loading only once per clone_set
-                    try:
-                        img_before = cv2.imread(current_directory + "\\"
-                                                + picture.clone_set.previous_picture.file_name
-                                                , cv2.IMREAD_COLOR)
-                        img_after = cv2.imread(current_directory + "\\"
-                                               + picture.clone_set.next_picture.file_name
-                                               , cv2.IMREAD_COLOR)
-                    except Exception as e:
-                        print(exception_to_string(e))
                     # create the new picture in memory from previous ones -
                     img_transition \
                         = picture.clone_set.duplicate_method_set.create_transition_image(
-                        img_before,
-                        img_after,
+                        picture.clone_set.previous_picture.get_opencv_image_fullsize(),
+                        picture.clone_set.next_picture.get_opencv_image_fullsize(),
                         nb_intervals,
                         interval_rank,
                     )
@@ -1855,22 +1837,11 @@ class PhotoCollection:
 
                     img_qpixmap = picture.get_qpixmap(key_string)
                     if img_qpixmap is None:
-                        # load previous and next picture in memory
-                        # TODO could be optimize by loading only once per clone_set
-                        try:
-                            img_before = cv2.imread(current_directory + "\\"
-                                                    + picture.clone_set.previous_picture.file_name
-                                                    , cv2.IMREAD_COLOR)
-                            img_after = cv2.imread(current_directory + "\\"
-                                                   + picture.clone_set.next_picture.file_name
-                                                   , cv2.IMREAD_COLOR)
-                        except Exception as e:
-                            print(exception_to_string(e))
                         # create the new picture in memory from previous ones -
                         img_transition \
                             = picture.clone_set.duplicate_method_set.create_transition_image(
-                            img_before,
-                            img_after,
+                            picture.clone_set.previous_picture.get_opencv_image_fullsize(),
+                            picture.clone_set.next_picture.get_opencv_image_fullsize(),
                             nb_intervals,
                             interval_rank,
                         )
