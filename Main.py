@@ -1081,7 +1081,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
                     output="qpixmap",
                     row_start=selection[0],
                     row_stop=selection[-1],
-                    size=(width, height)
+                     size=(width, height)
                     # file_treated_tick_function_reference=ProgressBarTicker.tick
                 )
 

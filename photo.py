@@ -146,6 +146,8 @@ class Photo(StoreQPixmap):
         self._shot_time = __class__.exif_info_2_time(self.exif_metadata["EXIF:CreateDate"])
         # store matploblib ready image preview (numpy RGB)  so as to speed up display in interface
         self._matplotlib_image_preview = None
+        # store full size image in opencv format (numpy BGR)
+        self._opencv_image_fullsize = None
         # store reference to the CloneSet for clone picture following this picture
         self.clone_set_with_next = None
         # store reference to the CloneSet for clone picture preceeding this picture
@@ -245,13 +247,20 @@ class PhotoFromVideo(Photo):
 
     def get_opencv_image_fullsize(self):
         """
-        Return the full definition image in an opencv mumpy BGR format if the mime/type is implemented
+        Return the full definition image in an opencv mumpy BGR format
         else it returns False
 
         :return:
         """
-        raise NotImplementedError
-        return img_cv2
+        if self._opencv_image_fullsize is None:
+            cap = cv2.VideoCapture(self._video_file_path)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, self._index_in_video)
+            ret, self._opencv_image_fullsize = cap.read()
+            if not ret:
+                return False
+            cap.release()
+
+        return self._opencv_image_fullsize
 
 
     def __getstate__(self):
@@ -1608,6 +1617,283 @@ class PhotoCollection:
 
         return (status, message, removed_pictures, could_not_remove_rows)
 
+    def generate_computed_pictures(self,
+                                   output="file",  # can be in {"file", "opencv3", "qpixmap"}
+                                   file_treated_tick_function_reference=False,
+                                   row_start=None,
+                                   row_stop=None,
+                                   size=None  # if not None must be (width, height) format
+                                   ):
+        """
+        Generate final pictures after computing clones with their respective duplicate method
+        and resize operation done if requested
+        Either to disk - in that case resize is ignored
+        or by returning an in memory opencv3 image
+        of by returning an in memory qpixmap image
+
+        if qpixmap option is requested stores the qpixmap image within the PhotoWithMetadata or PhotoCloned instance of
+        the picture - as provided by those classes that inherits StoreQPixmap class - This is to cache results
+        and allows computing only pictures with parameters changed on succesive iterations
+
+
+
+        :param output: specify if output is disk or cv2 valid values are {"file", "opencv3"}
+        :param file_treated_tick_function_reference: fucntion to increment progress bar
+        :param row_start: index position to start generation in collection
+        :param row_stop: index position to start generation in collection
+        :parame size: (width, height) couplestating dimension for resizing - Does not apply for "file" option
+        :return: a triplet (status, message, img_computed_list)
+                 status is either True or False
+                 message contains a detailed error message
+                 img_computed_list is
+                 None if "file" output option is set
+                 or a list of opencv3 images if output is set to "opencv3"
+
+        """
+
+        def opencv_2_resized_qpixmap(img_cv2_bgr, size=None):
+            """
+            Transform an opencv image in Qpixmap and resize it if a size coupe is provided
+            :param img_cv2_bgr:
+            :param size: None of (width, height)
+            :return: qpixmap resized
+            """
+            if size is not None:
+                width, height = size
+                img_resized = cv2.resize(img_cv2_bgr, (width, height), interpolation=cv2.INTER_AREA)
+            else:
+                img_resized = img_cv2_bgr
+            # BGR to RGB conversion
+            img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
+            # create QT image
+            image = QImage(img_rgb, img_rgb.shape[1],
+                           img_rgb.shape[0], img_rgb.shape[1] * 3, QImage.Format_RGB888)
+            qpixmap_ = QPi xmap(image)
+
+            return qpixmap_
+
+        def draw_text(frame, text, x, y, color=(255, 255, 255), thickness=3, size=3):
+            if x is not None and y is not None:
+                return cv2.putText(
+                    frame, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
+
+        index_start = row_start
+        index_stop = row_stop
+        status = True
+        message = "OK"
+        img_computed_list = []
+
+        if index_start is None and index_stop is None:
+            index_start = 0
+            index_stop = len(self._photo_collection) - 1
+
+        # check parameter consistency
+        # index values
+        if len(self._photo_collection) == 0:
+            message = " generate_computed_pictures not possible - collection is empty"
+            status = False
+            return (status, message, img_computed_list)
+        elif not (type(index_start) == int and type(index_stop) == int):
+            logger.error("generate_computed_pictures possible. index_start and index_stop must be int")
+            raise ValueError
+        elif index_stop < index_start \
+                or not (0 <= index_start < len(self._photo_collection)) \
+                or not (0 <= index_stop < len(self._photo_collection)):
+            logger.error(
+                "generate_computed_pictures not possible : index_start and index_stop values not properly ordered")
+            raise ValueError
+        # output values
+        if output not in {"file", "opencv3", "qpixmap"}:
+            logger.error(
+                "invalid output value while generating picture : must be 'file' or 'opencv3'")
+            raise ValueError
+
+        # set-up directory stuff
+        current_directory = os.getcwd()
+        target_directory = current_directory + "\\_extract-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        try:
+            os.mkdir(target_directory)
+        except FileExistsError:
+            # if directory already exists we do nothing so as not to mess up current contents
+            message = "can't generate_computed_pictures files folder % s already exists" \
+                      + str(target_directory)
+            logger.error(message)
+            status = False
+            return (status, message, img_computed_list)
+
+        logger.info("START EXTRACT OF %s PICTURE INTO %s", str(index_stop - index_start + 1), target_directory)
+
+        for index, picture in enumerate(self._photo_collection):
+
+            # skip pictures out of range
+            if index < index_start or index > index_stop:
+                continue
+
+            # i += 1
+            sequence_file_name = target_directory + "\\LRT_{0:05d}".format(
+                index + 1) + ".jpg "  # TODO implement case where images are not jpg !
+
+            # if isinstance(picture, PhotoWithMetadata):  # this is a real picture - simply copy it to new directory
+            if isinstance(picture, Photo):  # this is a real picture - simply copy it to new directory
+
+                # only jpeg is implemented
+                # if picture.exif_metadata["File:MIMEType"] != "image/jpeg":
+                #     continue  # TODO make this neater by refering to common supported list
+
+                if output == "file":
+
+                    try:   # TODO this copy file doesn't work for video as no file exists on disk
+                        shutil.copyfile(current_directory + "\\" + picture.file_name,
+                                        sequence_file_name)
+                        logger.info("%s file extracted as %s", picture.file_name, sequence_file_name)
+                    except Exception as Err:
+                        logger.error("copy failed for file %s with error code : %s", picture.file_name, str(Err))
+
+                elif output == "opencv3":
+
+                    img_cv2 = picture.get_opencv_image_fullsize()
+                    if size is not None:
+                        width, height = size
+                        img_cv2 = cv2.resize(img_cv2, (width, height), interpolation=cv2.INTER_AREA)
+                    img_computed_list.append(img_cv2)
+
+                elif output == "qpixmap":
+
+                    # compute a hash that uniquely identify generation parameters so that when a new generation is
+                    # launched only the picture with new parameters are recomputed and the process is fast
+                    key_string = str(size)
+
+                    img_qpixmap = picture.get_qpixmap(key_string)
+                    if img_qpixmap is None:
+                        img_qpixmap = opencv_2_resized_qpixmap(picture.get_opencv_image_fullsize(), size=size)
+                        picture.set_qpixmap(key_string, img_qpixmap)
+                    img_computed_list.append(img_qpixmap)
+
+                if file_treated_tick_function_reference:
+                    file_treated_tick_function_reference()  # one tick per file treated if function provided
+
+                method = ""
+
+            elif isinstance(picture, PhotoCloned):
+
+                # Determine  what is the rank of the current picture in the list of
+                # virtual pictures using the clone_set
+                nb_intervals = len(picture.clone_set.list_of_clones) + 1
+                picture.clone_set.list_of_clones.sort(key=lambda picture: self.position(picture))
+                interval_rank = picture.clone_set.list_of_clones.index(picture) + 1  # starts at 1, not at 0
+
+                # TODO DEBUG REMOVE add method on frame
+                # draw_text(img_transition,str(picture.duplicate_method), 150, 150)
+
+                if output == "file":
+                    # load previous and next picture in memory
+                    # TODO could be optimize by loading only once per clone_set
+                    try:
+                        img_before = cv2.imread(current_directory + "\\"
+                                                + picture.clone_set.previous_picture.file_name
+                                                , cv2.IMREAD_COLOR)
+                        img_after = cv2.imread(current_directory + "\\"
+                                               + picture.clone_set.next_picture.file_name
+                                               , cv2.IMREAD_COLOR)
+                    except Exception as e:
+                        print(exception_to_string(e))
+
+                    # create the new picture in memory from previous ones -
+                    img_transition \
+                        = picture.clone_set.duplicate_method_set.create_transition_image(
+                        img_before,
+                        img_after,
+                        nb_intervals,
+                        interval_rank,
+                    )
+                    # write it to disk
+                    try:
+                        cv2.imwrite(sequence_file_name, img_transition)
+                        logger.info("%s file extracted as %s", picture.file_name, sequence_file_name)
+                    except Exception as e:
+                        print(exception_to_string(e))
+                    # add metadata that will be copied from original using py3exiv2 and modify time based tags
+                    # TODO write to disk to be implemented..as opencv has lost all metadata
+                    # TODO NEED TO FIX INSTALL OF PY3EXIV2 package that fails with python 3.6 on windows due to utf-8 decode error
+
+                elif output == "opencv3":
+                    # load previous and next picture in memory
+                    # TODO could be optimize by loading only once per clone_set
+                    try:
+                        img_before = cv2.imread(current_directory + "\\"
+                                                + picture.clone_set.previous_picture.file_name
+                                                , cv2.IMREAD_COLOR)
+                        img_after = cv2.imread(current_directory + "\\"
+                                               + picture.clone_set.next_picture.file_name
+                                               , cv2.IMREAD_COLOR)
+                    except Exception as e:
+                        print(exception_to_string(e))
+                    # create the new picture in memory from previous ones -
+                    img_transition \
+                        = picture.clone_set.duplicate_method_set.create_transition_image(
+                        img_before,
+                        img_after,
+                        nb_intervals,
+                        interval_rank,
+                    )
+                    img_cv2 = img_transition
+                    if size is not None:
+                        width, height = size
+                        img_cv2 = cv2.resize(img_transition, (width, height), interpolation=cv2.INTER_AREA)
+                    img_computed_list.append(img_cv2)
+
+                elif output == "qpixmap":
+
+                    # compute a hash that uniquely identify generation parameters so that when a new generation is
+                    # launched only the picture with new parameters are recomputed and the process is fast
+                    key_string = str(picture.clone_set)
+                    key_string += str(interval_rank)
+                    key_string += str(picture.duplicate_method)
+                    key_string += str(picture.clone_set.computation_parameters)
+                    key_string += str(size)
+                    # print(picture.file_name," key_string= ",key_string)
+
+                    img_qpixmap = picture.get_qpixmap(key_string)
+                    if img_qpixmap is None:
+                        # load previous and next picture in memory
+                        # TODO could be optimize by loading only once per clone_set
+                        try:
+                            img_before = cv2.imread(current_directory + "\\"
+                                                    + picture.clone_set.previous_picture.file_name
+                                                    , cv2.IMREAD_COLOR)
+                            img_after = cv2.imread(current_directory + "\\"
+                                                   + picture.clone_set.next_picture.file_name
+                                                   , cv2.IMREAD_COLOR)
+                        except Exception as e:
+                            print(exception_to_string(e))
+                        # create the new picture in memory from previous ones -
+                        img_transition \
+                            = picture.clone_set.duplicate_method_set.create_transition_image(
+                            img_before,
+                            img_after,
+                            nb_intervals,
+                            interval_rank,
+                        )
+                        img_qpixmap = opencv_2_resized_qpixmap(img_transition, size=size)
+                        picture.set_qpixmap(key_string, img_qpixmap)
+                    img_computed_list.append(img_qpixmap)
+
+                if file_treated_tick_function_reference:
+                    file_treated_tick_function_reference()  # one tick per file treated if function provided
+
+                method = "with duplicate method: " + picture.duplicate_method
+            else:
+                raise ValueError
+
+            logger.info("%s generated as %s %s", picture.file_name, output, str(method))
+
+        logger.info("EXTRACTION COMPLETED")
+
+        return (status, message, img_computed_list)
+
+    # TODO implement __repr__
+
+
 
 class PhotoNonOrderedCollection(PhotoCollection):  # TODO MAY BE THIS COLLECTION IS NOT NEEDED - PARENT ONE CAN DO
     '''
@@ -2027,281 +2313,6 @@ class PhotoOrderedCollectionByCapturetime(PhotoCollection):
 
 
 
-
-    def generate_computed_pictures(self,
-                                   output="file",  # can be in {"file", "opencv3", "qpixmap"}
-                                   file_treated_tick_function_reference=False,
-                                   row_start=None,
-                                   row_stop=None,
-                                   size=None  # if not None must be (width, height) format
-                                   ):
-        """
-        Generate final pictures after computing clones with their respective duplicate method
-        and resize operation done if requested
-        Either to disk - in that case resize is ignored
-        or by returning an in memory opencv3 image
-        of by returning an in memory qpixmap image
-
-        if qpixmap option is requested stores the qpixmap image within the PhotoWithMetadata or PhotoCloned instance of
-        the picture - as provided by those classes that inherits StoreQPixmap class - This is to cache results
-        and allows computing only pictures with parameters changed on succesive iterations
-
-
-
-        :param output: specify if output is disk or cv2 valid values are {"file", "opencv3"}
-        :param file_treated_tick_function_reference: fucntion to increment progress bar
-        :param row_start: index position to start generation in collection
-        :param row_stop: index position to start generation in collection
-        :parame size: (width, height) couplestating dimension for resizing - Does not apply for "file" option
-        :return: a triplet (status, message, img_computed_list)
-                 status is either True or False
-                 message contains a detailed error message
-                 img_computed_list is
-                 None if "file" output option is set
-                 or a list of opencv3 images if output is set to "opencv3"
-
-        """
-
-        def opencv_2_resized_qpixmap(img_cv2_bgr, size=None):
-            """
-            Transform an opencv image in Qpixmap and resize it if a size coupe is provided
-            :param img_cv2_bgr:
-            :param size: None of (width, height)
-            :return: qpixmap resized
-            """
-            if size is not None:
-                width, height = size
-                img_resized = cv2.resize(img_cv2_bgr, (width, height), interpolation=cv2.INTER_AREA)
-            else:
-                img_resized = img_cv2_bgr
-            # BGR to RGB conversion
-            img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-            # create QT image
-            image = QImage(img_rgb, img_rgb.shape[1],
-                           img_rgb.shape[0], img_rgb.shape[1] * 3, QImage.Format_RGB888)
-            qpixmap_ = QPixmap(image)
-
-            return qpixmap_
-
-        def draw_text(frame, text, x, y, color=(255, 255, 255), thickness=3, size=3):
-            if x is not None and y is not None:
-                return cv2.putText(
-                    frame, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
-
-        index_start = row_start
-        index_stop = row_stop
-        status = True
-        message = "OK"
-        img_computed_list = []
-
-        if index_start is None and index_stop is None:
-            index_start = 0
-            index_stop = len(self._photo_collection) - 1
-
-        # check parameter consistency
-        # index values
-        if len(self._photo_collection) == 0:
-            message = " generate_computed_pictures not possible - collection is empty"
-            status = False
-            return (status, message, img_computed_list)
-        elif not (type(index_start) == int and type(index_stop) == int):
-            logger.error("generate_computed_pictures possible. index_start and index_stop must be int")
-            raise ValueError
-        elif index_stop < index_start \
-                or not (0 <= index_start < len(self._photo_collection)) \
-                or not (0 <= index_stop < len(self._photo_collection)):
-            logger.error(
-                "generate_computed_pictures not possible : index_start and index_stop values not properly ordered")
-            raise ValueError
-        # output values
-        if output not in {"file", "opencv3", "qpixmap"}:
-            logger.error(
-                "invalid output value while generating picture : must be 'file' or 'opencv3'")
-            raise ValueError
-
-        # set-up directory stuff
-        current_directory = os.getcwd()
-        target_directory = current_directory + "\\_extract-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        try:
-            os.mkdir(target_directory)
-        except FileExistsError:
-            # if directory already exists we do nothing so as not to mess up current contents
-            message = "can't generate_computed_pictures files folder % s already exists" \
-                      + str(target_directory)
-            logger.error(message)
-            status = False
-            return (status, message, img_computed_list)
-
-        logger.info("START EXTRACT OF %s PICTURE INTO %s", str(index_stop - index_start + 1), target_directory)
-
-        for index, picture in enumerate(self._photo_collection):
-
-            # skip pictures out of range
-            if index < index_start or index > index_stop:
-                continue
-
-            # i += 1
-            sequence_file_name = target_directory + "\\LRT_{0:05d}".format(
-                index + 1) + ".jpg "  # TODO implement case where images are not jpg !
-
-            if isinstance(picture, PhotoWithMetadata):  # this is a real picture - simply copy it to new directory
-
-                # only jpeg is implemented
-                # if picture.exif_metadata["File:MIMEType"] != "image/jpeg":
-                #     continue  # TODO make this neater by refering to common supported list
-
-                if output == "file":
-
-                    try:
-                        shutil.copyfile(current_directory + "\\" + picture.file_name,
-                                        sequence_file_name)
-                        logger.info("%s file extracted as %s", picture.file_name, sequence_file_name)
-                    except Exception as Err:
-                        logger.error("copy failed for file %s with error code : %s", picture.file_name, str(Err))
-
-                elif output == "opencv3":
-
-                    img_cv2 = picture.get_opencv_image_fullsize()
-                    if size is not None:
-                        width, height = size
-                        img_cv2 = cv2.resize(img_cv2, (width, height), interpolation=cv2.INTER_AREA)
-                    img_computed_list.append(img_cv2)
-
-                elif output == "qpixmap":
-
-                    # compute a hash that uniquely identify generation parameters so that when a new generation is
-                    # launched only the picture with new parameters are recomputed and the process is fast
-                    key_string = str(size)
-
-                    img_qpixmap = picture.get_qpixmap(key_string)
-                    if img_qpixmap is None:
-                        img_qpixmap = opencv_2_resized_qpixmap(picture.get_opencv_image_fullsize(), size=size)
-                        picture.set_qpixmap(key_string, img_qpixmap)
-                    img_computed_list.append(img_qpixmap)
-
-                if file_treated_tick_function_reference:
-                    file_treated_tick_function_reference()  # one tick per file treated if function provided
-
-                method = ""
-
-            elif isinstance(picture, PhotoCloned):
-
-                # Determine  what is the rank of the current picture in the list of
-                # virtual pictures using the clone_set
-                nb_intervals = len(picture.clone_set.list_of_clones) + 1
-                picture.clone_set.list_of_clones.sort(key=lambda picture: self.position(picture))
-                interval_rank = picture.clone_set.list_of_clones.index(picture) + 1  # starts at 1, not at 0
-
-                # TODO DEBUG REMOVE add method on frame
-                # draw_text(img_transition,str(picture.duplicate_method), 150, 150)
-
-                if output == "file":
-                    # load previous and next picture in memory
-                    # TODO could be optimize by loading only once per clone_set
-                    try:
-                        img_before = cv2.imread(current_directory + "\\"
-                                                + picture.clone_set.previous_picture.file_name
-                                                , cv2.IMREAD_COLOR)
-                        img_after = cv2.imread(current_directory + "\\"
-                                               + picture.clone_set.next_picture.file_name
-                                               , cv2.IMREAD_COLOR)
-                    except Exception as e:
-                        print(exception_to_string(e))
-
-                    # create the new picture in memory from previous ones -
-                    img_transition \
-                        = picture.clone_set.duplicate_method_set.create_transition_image(
-                        img_before,
-                        img_after,
-                        nb_intervals,
-                        interval_rank,
-                    )
-                    # write it to disk
-                    try:
-                        cv2.imwrite(sequence_file_name, img_transition)
-                        logger.info("%s file extracted as %s", picture.file_name, sequence_file_name)
-                    except Exception as e:
-                        print(exception_to_string(e))
-                    # add metadata that will be copied from original using py3exiv2 and modify time based tags
-                    # TODO write to disk to be implemented..as opencv has lost all metadata
-                    # TODO NEED TO FIX INSTALL OF PY3EXIV2 package that fails with python 3.6 on windows due to utf-8 decode error
-
-                elif output == "opencv3":
-                    # load previous and next picture in memory
-                    # TODO could be optimize by loading only once per clone_set
-                    try:
-                        img_before = cv2.imread(current_directory + "\\"
-                                                + picture.clone_set.previous_picture.file_name
-                                                , cv2.IMREAD_COLOR)
-                        img_after = cv2.imread(current_directory + "\\"
-                                               + picture.clone_set.next_picture.file_name
-                                               , cv2.IMREAD_COLOR)
-                    except Exception as e:
-                        print(exception_to_string(e))
-                    # create the new picture in memory from previous ones -
-                    img_transition \
-                        = picture.clone_set.duplicate_method_set.create_transition_image(
-                        img_before,
-                        img_after,
-                        nb_intervals,
-                        interval_rank,
-                    )
-                    img_cv2 = img_transition
-                    if size is not None:
-                        width, height = size
-                        img_cv2 = cv2.resize(img_transition, (width, height), interpolation=cv2.INTER_AREA)
-                    img_computed_list.append(img_cv2)
-
-                elif output == "qpixmap":
-
-                    # compute a hash that uniquely identify generation parameters so that when a new generation is
-                    # launched only the picture with new parameters are recomputed and the process is fast
-                    key_string = str(picture.clone_set)
-                    key_string += str(interval_rank)
-                    key_string += str(picture.duplicate_method)
-                    key_string += str(picture.clone_set.computation_parameters)
-                    key_string += str(size)
-                    # print(picture.file_name," key_string= ",key_string)
-
-                    img_qpixmap = picture.get_qpixmap(key_string)
-                    if img_qpixmap is None:
-                        # load previous and next picture in memory
-                        # TODO could be optimize by loading only once per clone_set
-                        try:
-                            img_before = cv2.imread(current_directory + "\\"
-                                                    + picture.clone_set.previous_picture.file_name
-                                                    , cv2.IMREAD_COLOR)
-                            img_after = cv2.imread(current_directory + "\\"
-                                                   + picture.clone_set.next_picture.file_name
-                                                   , cv2.IMREAD_COLOR)
-                        except Exception as e:
-                            print(exception_to_string(e))
-                        # create the new picture in memory from previous ones -
-                        img_transition \
-                            = picture.clone_set.duplicate_method_set.create_transition_image(
-                            img_before,
-                            img_after,
-                            nb_intervals,
-                            interval_rank,
-                        )
-                        img_qpixmap = opencv_2_resized_qpixmap(img_transition, size=size)
-                        picture.set_qpixmap(key_string, img_qpixmap)
-                    img_computed_list.append(img_qpixmap)
-
-                if file_treated_tick_function_reference:
-                    file_treated_tick_function_reference()  # one tick per file treated if function provided
-
-                method = "with duplicate method: " + picture.duplicate_method
-            else:
-                raise ValueError
-
-            logger.info("%s generated as %s %s", picture.file_name, output, str(method))
-
-        logger.info("EXTRACTION COMPLETED")
-
-        return (status, message, img_computed_list)
-
-    # TODO implement __repr__
 
 
 def controler_temps():
