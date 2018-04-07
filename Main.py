@@ -532,7 +532,8 @@ class StatusProgressBarTicker:
     future by adding to this class a parameter stating which progressBar is to be addressed
     '''
 
-    def __init__(self, total_nb_of_ticks):
+    def __init__(self, gui_object, total_nb_of_ticks):
+        self.gui_object = gui_object
         self.tick_counter = 0
         self.five_percent_chunk_occurence = 0
         self.five_percent_chunk_value = round(total_nb_of_ticks) * 0.05
@@ -541,7 +542,7 @@ class StatusProgressBarTicker:
         self.tick_counter += 1
         if self.tick_counter // self.five_percent_chunk_value > self.five_percent_chunk_occurence:
             self.five_percent_chunk_occurence += 1
-            ui.IncreaseProgressBarBy5Pc.emit()
+            self.gui_object.IncreaseProgressBarBy5Pc.emit()
             QtWidgets.QApplication.processEvents()
 
     # TODO implement __repr__
@@ -600,6 +601,9 @@ class ShowVideoController(QMainWindow, Ui_PictureWindow):
     for display with display method
     """
 
+    ToggleProgressBar = pyqtSignal()  # TODO NOt used so far - can be push up in a top level class
+    IncreaseProgressBarBy5Pc = pyqtSignal()  # signal to move progress Bar by 5 pc
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setupUi(self)
@@ -639,6 +643,8 @@ class ShowVideoController(QMainWindow, Ui_PictureWindow):
 
         # initialize progress bar
         self.progress_bar = None
+        self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
+
 
     def get_image_size(self):
         width = self.labelQpixmap.frameGeometry().width()
@@ -900,7 +906,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.commit_history.reset()
 
         self.toggle_progress_bar()  # display_upon_sliderReleased_signal progress bar
-        progress_bar_ticker = StatusProgressBarTicker(nb_ticks)  # two stages per file
+        progress_bar_ticker = StatusProgressBarTicker(self, nb_ticks)  # two stages per file
         QtWidgets.QApplication.processEvents()
 
         logger.info(" START PHOTO META DATA EXTRACTION OF TYPE %s FROM %s", VALID_PHOTO_FILE_SUFFIXES, str(file_path))
@@ -926,7 +932,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.toggle_progress_bar()  # close progress bar
         self.status_message_preserved = self.statusbar_message_qlabel.text()
         self.statusbar_message_qlabel.setText("loading image previews...")
-        progress_bar_ticker = StatusProgressBarTicker(len(self.active_photos))
+        progress_bar_ticker = StatusProgressBarTicker(self, len(self.active_photos))
         self.image_preview_load_completed = False
 
         # start or restart background threads that will load pictures in memory in background
@@ -1040,7 +1046,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         :return:
         """
         self.ToggleProgressBar.emit()
-        ProgressBarTicker = StatusProgressBarTicker(len(self.active_photos))
+        ProgressBarTicker = StatusProgressBarTicker(self, len(self.active_photos))
 
         status, \
         message, \
@@ -1102,8 +1108,8 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
             self.sv.show()
             QtWidgets.QApplication.processEvents()  #call main Qt loop - else window does not show-up properly
 
-            # set-up progress bar
-            progress_bar_ticker = StatusProgressBarTicker(len(selection))  # two stages per file
+            # set-up progress bar - pass self.sv as progress bar is on ShowVideo child window
+            progress_bar_ticker = StatusProgressBarTicker(self.sv, len(selection))
             QtWidgets.QApplication.processEvents()
             self.sv.toggle_progress_bar()
 
