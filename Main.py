@@ -1074,6 +1074,18 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
                                   " Pictures must be consecutives - select a consecutive set of pictures before")
                 return
 
+            # Display a builtin image stating that loading is in progress
+            load_in_progress_computed_image = QPixmap(QSize(width, height))
+            load_in_progress_computed_image.fill(color=Qt.blue)
+            painter = QPainter(load_in_progress_computed_image)
+            painter.setFont(QFont("Arial", 70))
+            painter.setPen(QColor(255, 255, 255))
+            painter.drawText(QRect(QPoint(0,0),QPoint(width, height)),Qt.AlignHCenter | Qt.AlignTop  , "\nLoading...")
+            painter.end()    # if Qpainter is not terminated properly the next display would crash
+            self.sv.display([load_in_progress_computed_image], 0)
+            self.sv.show()
+            QtWidgets.QApplication.processEvents()  #call main Qt loop - else window does not show-up properly
+
             status, \
             message, \
             img_qpixmap_list = \
