@@ -635,7 +635,10 @@ class ShowVideoController(QMainWindow, Ui_PictureWindow):
 
         # initialize statusbar
         self.statusbar_message_qlabel = QLabel("Ready for video play")
-        self.statusBar.addWidget(self.statusbar_message_qlabel)
+        self.statusbar.addWidget(self.statusbar_message_qlabel)
+
+        # initialize progress bar
+        self.progress_bar = None
 
     def get_image_size(self):
         width = self.labelQpixmap.frameGeometry().width()
@@ -708,6 +711,19 @@ class ShowVideoController(QMainWindow, Ui_PictureWindow):
 
     def handle_not_implemented(self):
         QMessageBox.about(self, PROGRAM_NAME, "method not yet implemented...be patient !")
+
+    def toggle_progress_bar(self):
+        if not self.progress_bar:
+            self.progress_bar = StatusProgressBar(self)
+            self.progress_bar.hide()
+        if self.progress_bar.isVisible():
+            self.progress_bar.hide()
+            self.progress_bar.progress_reset_to_zero()
+        else:
+            self.progress_bar.show()
+
+    def increment_progress_bar_by_5_percent(self):
+        self.progress_bar.progress_five_percent()
 
 
 class ModelToViewController(QMainWindow, Ui_MainWindow):
@@ -1076,28 +1092,36 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
 
             # Display a builtin image stating that loading is in progress
             load_in_progress_computed_image = QPixmap(QSize(width, height))
-            load_in_progress_computed_image.fill(color=Qt.blue)
+            load_in_progress_computed_image.fill(color=Qt.darkBlue)
             painter = QPainter(load_in_progress_computed_image)
             painter.setFont(QFont("Arial", 70))
-            painter.setPen(QColor(255, 255, 255))
+            painter.setPen(Qt.white)
             painter.drawText(QRect(QPoint(0,0),QPoint(width, height)),Qt.AlignHCenter | Qt.AlignTop  , "\nLoading...")
             painter.end()    # if Qpainter is not terminated properly the next display would crash
             self.sv.display([load_in_progress_computed_image], 0)
             self.sv.show()
             QtWidgets.QApplication.processEvents()  #call main Qt loop - else window does not show-up properly
 
+            # set-up progress bar
+            progress_bar_ticker = StatusProgressBarTicker(len(selection))  # two stages per file
+            QtWidgets.QApplication.processEvents()
+            self.sv.toggle_progress_bar()
+
             status, \
             message, \
             img_qpixmap_list = \
                 self.active_photos.generate_computed_pictures(
                     output="qpixmap",
+                    file_treated_tick_function_reference=progress_bar_ticker.tick,
                     row_start=selection[0],
                     row_stop=selection[-1],
                      size=(width, height)
                     # file_treated_tick_function_reference=ProgressBarTicker.tick
                 )
 
+
             self.sv.display(img_qpixmap_list, selection[0])
+            self.sv.toggle_progress_bar()
 
             logger.info("SHOW VIDEO PREPARATION COMPLETED")
 
