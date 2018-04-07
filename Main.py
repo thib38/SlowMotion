@@ -1625,7 +1625,7 @@ if __name__ == "__main__":
     # VALID_PHOTO_FILE_SUFFIXES = [".NEF"]
     VALID_PHOTO_FILE_SUFFIXES = [".NEF", ".JPG", ".jpg"]
 
-    VALID_VIDEO_FILE_SUFFIXES = [".mp4", ".avi"]   # has to be handle properly by opencv3
+    VALID_VIDEO_FILE_SUFFIXES = [".mp4", ".avi", ".MOV"]   # has to be handle properly by opencv3
 
     SCENARIO_FILE_SUFFIX = ".pkl"   # stands for pickle
 

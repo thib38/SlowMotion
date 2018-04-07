@@ -768,6 +768,7 @@ class DuplicateLucasKanade(DuplicateMethod):
             # points with a move of less than 1 and located in border (of length width) are not treated
             distance = ((x_src - x_end) ** 2 + (y_src - y_end) ** 2) ** 0.5
             distance_list.append(distance)
+
             if distance <= 1 \
                     or distance > radius_max \
                     or (x_src < length) \
@@ -1590,7 +1591,7 @@ class PhotoCollection:
         clone_index_list = [index for index in sorted_list_of_photo_index_2_be_duplicated if
                             isinstance(self._photo_collection[index], PhotoCloned)]
         photo_index_list = [index for index in sorted_list_of_photo_index_2_be_duplicated if
-                            isinstance(self._photo_collection[index], PhotoWithMetadata)]
+                            isinstance(self._photo_collection[index], Photo)]
 
         # first remove all clones as it is always possible to remove and it will "free-up" pictures with links
         # on clones that are to be deleted in the list
