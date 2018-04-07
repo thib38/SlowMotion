@@ -592,7 +592,31 @@ class RollBackHeap:  # TODO NEED TO BE FIXED IN LINE WITH CLONESET MODEL RECENTL
     # TODO implement __repr__
 
 
-class ShowVideoController(QMainWindow, Ui_PictureWindow):
+class Controller:
+
+    ToggleProgressBar = pyqtSignal()  # signal to show or close progress bar for loading file
+    IncreaseProgressBarBy5Pc = pyqtSignal()  # signal to move progress Bar by 5 pc
+
+    def __init__(self):
+        # initialize progress bar
+        self.progress_bar = None
+        self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
+
+    def toggle_progress_bar(self, gui_object):
+        if not self.progress_bar:
+            self.progress_bar = StatusProgressBar(gui_object)
+            self.progress_bar.hide()
+        if self.progress_bar.isVisible():
+            self.progress_bar.hide()
+            self.progress_bar.progress_reset_to_zero()
+        else:
+            self.progress_bar.show()
+
+    def increment_progress_bar_by_5_percent(self):
+        self.progress_bar.progress_five_percent()
+
+
+class ShowVideoController(QMainWindow, Controller, Ui_PictureWindow):
     """
     This class manages the window that allows to display selected pictures frame per frame
     or as video at various fps if pictures are contiguous
@@ -601,8 +625,6 @@ class ShowVideoController(QMainWindow, Ui_PictureWindow):
     for display with display method
     """
 
-    ToggleProgressBar = pyqtSignal()  # TODO NOt used so far - can be push up in a top level class
-    IncreaseProgressBarBy5Pc = pyqtSignal()  # signal to move progress Bar by 5 pc
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -641,9 +663,9 @@ class ShowVideoController(QMainWindow, Ui_PictureWindow):
         self.statusbar_message_qlabel = QLabel("Ready for video play")
         self.statusbar.addWidget(self.statusbar_message_qlabel)
 
-        # initialize progress bar
-        self.progress_bar = None
-        self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
+        # # initialize progress bar
+        # self.progress_bar = None
+        # self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
 
 
     def get_image_size(self):
@@ -718,23 +740,23 @@ class ShowVideoController(QMainWindow, Ui_PictureWindow):
     def handle_not_implemented(self):
         QMessageBox.about(self, PROGRAM_NAME, "method not yet implemented...be patient !")
 
-    def toggle_progress_bar(self):
-        if not self.progress_bar:
-            self.progress_bar = StatusProgressBar(self)
-            self.progress_bar.hide()
-        if self.progress_bar.isVisible():
-            self.progress_bar.hide()
-            self.progress_bar.progress_reset_to_zero()
-        else:
-            self.progress_bar.show()
+    # def toggle_progress_bar(self):
+    #     if not self.progress_bar:
+    #         self.progress_bar = StatusProgressBar(self)
+    #         self.progress_bar.hide()
+    #     if self.progress_bar.isVisible():
+    #         self.progress_bar.hide()
+    #         self.progress_bar.progress_reset_to_zero()
+    #     else:
+    #         self.progress_bar.show()
+    #
+    # def increment_progress_bar_by_5_percent(self):
+    #     self.progress_bar.progress_five_percent()
 
-    def increment_progress_bar_by_5_percent(self):
-        self.progress_bar.progress_five_percent()
 
-
-class ModelToViewController(QMainWindow, Ui_MainWindow):
-    ToggleProgressBar = pyqtSignal()  # signal to show or close progress bar for loading file
-    IncreaseProgressBarBy5Pc = pyqtSignal()  # signal to move progress Bar by 5 pc
+class ModelToViewController(QMainWindow, Controller, Ui_MainWindow):
+    # ToggleProgressBar = pyqtSignal()  # signal to show or close progress bar for loading file
+    # IncreaseProgressBarBy5Pc = pyqtSignal()  # signal to move progress Bar by 5 pc
     BackgroundPictureLoadCompleted = pyqtSignal()  # signal background load of picture is completed
 
     def __init__(self, parent=None):
@@ -754,8 +776,8 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         # state whether all preview are loaded or not
         self.image_preview_load_completed = True  # initialized at True so that it passes completion test 1st timme
 
-        # long live attribute to hold progressbar instance
-        self.progress_bar = None
+        # # long live attribute to hold progressbar instance
+        # self.progress_bar = None
 
         # status bar permanent header
         self.statusbar.addPermanentWidget(QLabel("  |  " + PROGRAM_NAME + " " + VERSION))
@@ -799,8 +821,8 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.actiongunner_farnerback.triggered.connect(self.handle_duplicate_method_set_to_gunner_farnerback_menu)
 
         # connect progress bar pyQtsignals to their slots
-        self.ToggleProgressBar.connect(self.toggle_progress_bar)
-        self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
+        self.ToggleProgressBar.connect(lambda: self.toggle_progress_bar(self))
+        # self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
         self.BackgroundPictureLoadCompleted.connect(self.upon_background_picture_load_completed)
 
         # initialize duplicate method
@@ -822,18 +844,18 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         # TODO centralise statusbar management in a class that hides the "Qt tringlerie" from application logic
         return True
 
-    def toggle_progress_bar(self):
-        if not self.progress_bar:
-            self.progress_bar = StatusProgressBar(self)
-            self.progress_bar.hide()
-        if self.progress_bar.isVisible():
-            self.progress_bar.hide()
-            self.progress_bar.progress_reset_to_zero()
-        else:
-            self.progress_bar.show()
-
-    def increment_progress_bar_by_5_percent(self):
-        self.progress_bar.progress_five_percent()
+    # def toggle_progress_bar(self):
+    #     if not self.progress_bar:
+    #         self.progress_bar = StatusProgressBar(self)
+    #         self.progress_bar.hide()
+    #     if self.progress_bar.isVisible():
+    #         self.progress_bar.hide()
+    #         self.progress_bar.progress_reset_to_zero()
+    #     else:
+    #         self.progress_bar.show()
+    #
+    # def increment_progress_bar_by_5_percent(self):
+    #     self.progress_bar.progress_five_percent()
 
     def update_view_but_table(self):
         '''
@@ -905,7 +927,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.discarded_photos.reset()
         self.commit_history.reset()
 
-        self.toggle_progress_bar()  # display_upon_sliderReleased_signal progress bar
+        self.toggle_progress_bar(self)  # display_upon_sliderReleased_signal progress bar
         progress_bar_ticker = StatusProgressBarTicker(self, nb_ticks)  # two stages per file
         QtWidgets.QApplication.processEvents()
 
@@ -929,7 +951,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         self.my_graph.compute_and_display_figure(self.active_photos)
         self.my_slider.display_by_row(0)
         self.my_slider.set_cursor(0)
-        self.toggle_progress_bar()  # close progress bar
+        self.toggle_progress_bar(self)  # close progress bar
         self.status_message_preserved = self.statusbar_message_qlabel.text()
         self.statusbar_message_qlabel.setText("loading image previews...")
         progress_bar_ticker = StatusProgressBarTicker(self, len(self.active_photos))
@@ -943,7 +965,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
         # inform about status of load
         QMessageBox.about(self, PROGRAM_NAME, msgbox_txt)
         logger.info(" %s PHOTOS LOADED in Photo Class ", str(len(self.active_photos)))
-        self.toggle_progress_bar()  # close progress bar
+        self.toggle_progress_bar(self)  # close progress bar
         logger.info(" %s PHOTOS LOADED in Photoxxxx Class ", str(len(self.active_photos)))
 
         return
@@ -957,7 +979,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
 
     def upon_background_picture_load_completed(self):
         self.image_preview_load_completed = True
-        self.toggle_progress_bar()
+        self.toggle_progress_bar(self)
         self.statusbar_message_qlabel.setText(self.status_message_preserved)
         self.my_slider.slider_connect_valueChanged_signal_slot()
         self.ShowImageRadioButton.setChecked(True)  # check radio button and activate display of image
@@ -1111,7 +1133,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
             # set-up progress bar - pass self.sv as progress bar is on ShowVideo child window
             progress_bar_ticker = StatusProgressBarTicker(self.sv, len(selection))
             QtWidgets.QApplication.processEvents()
-            self.sv.toggle_progress_bar()
+            self.sv.toggle_progress_bar(self.sv)
 
             status, \
             message, \
@@ -1127,7 +1149,7 @@ class ModelToViewController(QMainWindow, Ui_MainWindow):
 
 
             self.sv.display(img_qpixmap_list, selection[0])
-            self.sv.toggle_progress_bar()
+            self.sv.toggle_progress_bar(self.sv)
 
             logger.info("SHOW VIDEO PREPARATION COMPLETED")
 
