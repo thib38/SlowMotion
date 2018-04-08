@@ -513,8 +513,8 @@ class StatusProgressBar(QProgressBar):
         self.setValue(0)
         QtWidgets.QApplication.processEvents()
 
-    def progress_five_percent(self):
-        self.setValue(self.value() + 5)
+    def progress_n_percent(self, percentage_increment):
+        self.setValue(self.value() + percentage_increment)
         QtWidgets.QApplication.processEvents()
 
 
@@ -523,26 +523,20 @@ class StatusProgressBarTicker:
     initialized with the number of "ticks" that will be sent to reach 100% completion
     and increase ProgressBar by 5% chunk upon tick received via the self.tick() method
 
-    ProgressBar value is incremented indirectly via the emitting of a PyQT signal (IncreaseProgressBarBy5Pc) that
-    is connected to a slot responsible for execution within the ModelToViewController Class - So progressBar implementation can varies
-    independently from this class
-
-    In current implementation assumption is that we use a unique and same ProgressBar displayed within the status bar
-    for the whole program whatever the action progress to be shown but should it be required it could change in
-    future by adding to this class a parameter stating which progressBar is to be addressed
+    gui_object: refers to the QMainWindow instance to wich the class is attached
+    total_nb_of_ticks: nb of ticks so that 100% is reached
     '''
-
-    def __init__(self, gui_object, total_nb_of_ticks):
+    def __init__(self, gui_object, total_nb_of_ticks, percentage_increment=1):
         self.gui_object = gui_object
         self.tick_counter = 0
         self.five_percent_chunk_occurence = 0
-        self.five_percent_chunk_value = round(total_nb_of_ticks) * 0.05
+        self.five_percent_chunk_value = round(total_nb_of_ticks) * (percentage_increment / 100)
 
     def tick(self):
         self.tick_counter += 1
         if self.tick_counter // self.five_percent_chunk_value > self.five_percent_chunk_occurence:
             self.five_percent_chunk_occurence += 1
-            self.gui_object.IncreaseProgressBarBy5Pc.emit()
+            self.gui_object.increment_progress_bar_by_n_percent(1)
             QtWidgets.QApplication.processEvents()
 
     # TODO implement __repr__
@@ -595,12 +589,10 @@ class RollBackHeap:  # TODO NEED TO BE FIXED IN LINE WITH CLONESET MODEL RECENTL
 class Controller:
 
     ToggleProgressBar = pyqtSignal()  # signal to show or close progress bar for loading file
-    IncreaseProgressBarBy5Pc = pyqtSignal()  # signal to move progress Bar by 5 pc
 
     def __init__(self):
         # initialize progress bar
         self.progress_bar = None
-        self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
 
     def toggle_progress_bar(self, gui_object):
         if not self.progress_bar:
@@ -612,8 +604,8 @@ class Controller:
         else:
             self.progress_bar.show()
 
-    def increment_progress_bar_by_5_percent(self):
-        self.progress_bar.progress_five_percent()
+    def increment_progress_bar_by_n_percent(self, percentage_increment):
+        self.progress_bar.progress_n_percent(percentage_increment)
 
 
 class ShowVideoController(QMainWindow, Controller, Ui_PictureWindow):
@@ -662,11 +654,6 @@ class ShowVideoController(QMainWindow, Controller, Ui_PictureWindow):
         # initialize statusbar
         self.statusbar_message_qlabel = QLabel("Ready for video play")
         self.statusbar.addWidget(self.statusbar_message_qlabel)
-
-        # # initialize progress bar
-        # self.progress_bar = None
-        # self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
-
 
     def get_image_size(self):
         width = self.labelQpixmap.frameGeometry().width()
@@ -740,23 +727,8 @@ class ShowVideoController(QMainWindow, Controller, Ui_PictureWindow):
     def handle_not_implemented(self):
         QMessageBox.about(self, PROGRAM_NAME, "method not yet implemented...be patient !")
 
-    # def toggle_progress_bar(self):
-    #     if not self.progress_bar:
-    #         self.progress_bar = StatusProgressBar(self)
-    #         self.progress_bar.hide()
-    #     if self.progress_bar.isVisible():
-    #         self.progress_bar.hide()
-    #         self.progress_bar.progress_reset_to_zero()
-    #     else:
-    #         self.progress_bar.show()
-    #
-    # def increment_progress_bar_by_5_percent(self):
-    #     self.progress_bar.progress_five_percent()
-
 
 class ModelToViewController(QMainWindow, Controller, Ui_MainWindow):
-    # ToggleProgressBar = pyqtSignal()  # signal to show or close progress bar for loading file
-    # IncreaseProgressBarBy5Pc = pyqtSignal()  # signal to move progress Bar by 5 pc
     BackgroundPictureLoadCompleted = pyqtSignal()  # signal background load of picture is completed
 
     def __init__(self, parent=None):
@@ -822,7 +794,6 @@ class ModelToViewController(QMainWindow, Controller, Ui_MainWindow):
 
         # connect progress bar pyQtsignals to their slots
         self.ToggleProgressBar.connect(lambda: self.toggle_progress_bar(self))
-        # self.IncreaseProgressBarBy5Pc.connect(self.increment_progress_bar_by_5_percent)
         self.BackgroundPictureLoadCompleted.connect(self.upon_background_picture_load_completed)
 
         # initialize duplicate method
@@ -843,19 +814,6 @@ class ModelToViewController(QMainWindow, Controller, Ui_MainWindow):
         self.statusbar_message_qlabel.setText(self.status_message_backup)
         # TODO centralise statusbar management in a class that hides the "Qt tringlerie" from application logic
         return True
-
-    # def toggle_progress_bar(self):
-    #     if not self.progress_bar:
-    #         self.progress_bar = StatusProgressBar(self)
-    #         self.progress_bar.hide()
-    #     if self.progress_bar.isVisible():
-    #         self.progress_bar.hide()
-    #         self.progress_bar.progress_reset_to_zero()
-    #     else:
-    #         self.progress_bar.show()
-    #
-    # def increment_progress_bar_by_5_percent(self):
-    #     self.progress_bar.progress_five_percent()
 
     def update_view_but_table(self):
         '''
